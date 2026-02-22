@@ -1,35 +1,39 @@
 import pdfplumber
-import pytesseract
 import os
 import sys
-import shutil
 from PIL import Image, ImageOps, ImageFilter
 
-# Attempt to locate Tesseract binary on Windows
-possible_paths = [
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-    r"C:\Users\{}\AppData\Local\Tesseract-OCR\tesseract.exe".format(os.getlogin()),
-    r"D:\Program Files\Tesseract-OCR\tesseract.exe",
-    r"C:\Tesseract-OCR\tesseract.exe"
-]
-
-tesseract_cmd = None
-# Check system path first
-if shutil.which("tesseract"):
-    tesseract_cmd = shutil.which("tesseract")
-else:
-    for path in possible_paths:
-        if os.path.exists(path):
-            tesseract_cmd = path
-            break
-
-if tesseract_cmd:
-    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-    print(f"✅ Tesseract found at: {tesseract_cmd}")
-else:
-    print("⚠️ Warning: Tesseract-OCR not found in common paths. Image OCR may fail.")
-    print("Please install Tesseract from: https://github.com/UB-Mannheim/tesseract/wiki")
+try:
+    from paddleocr import PaddleOCR
+    PADDLE_AVAILABLE = True
+    ocr_engine = PaddleOCR(use_angle_cls=True, lang='en')
+except ImportError:
+    PADDLE_AVAILABLE = False
+    import pytesseract
+    import shutil
+    
+    possible_paths = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        r"C:\Users\{}\AppData\Local\Tesseract-OCR\tesseract.exe".format(os.getlogin()),
+        r"D:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Tesseract-OCR\tesseract.exe"
+    ]
+    
+    tesseract_cmd = None
+    if shutil.which("tesseract"):
+        tesseract_cmd = shutil.which("tesseract")
+    else:
+        for path in possible_paths:
+            if os.path.exists(path):
+                tesseract_cmd = path
+                break
+    
+    if tesseract_cmd:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+        print(f"✅ Tesseract found at: {tesseract_cmd}")
+    else:
+        print("⚠️ Warning: No OCR engine available")
 
 def preprocess_image(img: Image.Image) -> Image.Image:
     """
@@ -69,25 +73,28 @@ def extract_text(path: str, ext: str) -> str:
             return ""
 
     if ext in ["png", "jpg", "jpeg"]:
-        if not tesseract_cmd and not shutil.which("tesseract"):
-             return "Error: Tesseract-OCR is not installed or not found on this system."
-        
         try:
-            img = Image.open(path)
-            
-            # Apply Preprocessing
-            img = preprocess_image(img)
-            
-            # Using PSM 3 (Fully automatic page segmentation)
-            custom_config = r'--oem 3 --psm 3'
-            
-            text = pytesseract.image_to_string(img, config=custom_config)
-            
-            # Optional: Log for debugging if text is very short
-            if len(text.strip()) < 50:
-                print(f"Warning: Low text yield from OCR ({len(text)} chars). Preprocessing might need tuning.")
+            if PADDLE_AVAILABLE:
+                # Use PaddleOCR
+                result = ocr_engine.ocr(path, cls=True)
+                if result and result[0]:
+                    text_lines = [line[1][0] for line in result[0]]
+                    return "\n".join(text_lines)
+                return ""
+            else:
+                # Fallback to Tesseract
+                if not tesseract_cmd:
+                    return "Error: No OCR engine available"
                 
-            return text
+                img = Image.open(path)
+                img = preprocess_image(img)
+                custom_config = r'--oem 3 --psm 3'
+                text = pytesseract.image_to_string(img, config=custom_config)
+                
+                if len(text.strip()) < 50:
+                    print(f"Warning: Low text yield from OCR ({len(text)} chars)")
+                    
+                return text
         except Exception as e:
             print(f"Image OCR failed: {e}")
             return ""

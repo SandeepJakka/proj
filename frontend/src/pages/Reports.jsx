@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getReports, uploadReport, explainReport, getTrends, getLabValues } from '../services/api';
-import { Upload, FileText, CheckCircle, Search, AlertCircle, Loader, TrendingUp, Calendar } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Search, AlertCircle, Loader, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import LabValuesDisplay from '../components/LabValuesDisplay';
 
@@ -35,6 +35,21 @@ const Reports = () => {
     }
   };
 
+  const deleteReport = async (reportId, e) => {
+    e.stopPropagation();
+    if (!confirm('Delete this report?')) return;
+    try {
+      await fetch(`http://127.0.0.1:8000/api/reports/${reportId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (selectedReport?.id === reportId) setSelectedReport(null);
+      fetchReports();
+    } catch (err) {
+      console.error('Failed to delete report', err);
+    }
+  };
+
   // Fetch lab values when report is selected
   useEffect(() => {
     if (selectedReport && viewMode === 'list') {
@@ -64,15 +79,21 @@ const Reports = () => {
     formData.append('file', file);
 
     try {
-      await uploadReport(formData);
+      const res = await uploadReport(formData);
       await fetchReports();
+      
+      // Show different message for X-ray vs lab report
+      if (res.data.type === 'medical_image') {
+        alert(`✅ ${res.data.image_type} analyzed successfully!\n\n${res.data.disclaimer}`);
+      }
+      
       confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 }
       });
     } catch (err) {
-      alert("Upload failed. Make sure Tesseract is installed on backend.");
+      alert("Upload failed. " + (err.response?.data?.detail || "Please try again."));
     } finally {
       setUploading(false);
     }
@@ -155,6 +176,9 @@ const Reports = () => {
                   <span className="r-name">{r.filename}</span>
                   <span className="r-date">{new Date(r.created_at).toLocaleDateString()}</span>
                 </div>
+                <button className="delete-report-btn" onClick={(e) => deleteReport(r.id, e)}>
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
           </div>
@@ -224,46 +248,67 @@ const Reports = () => {
               </div>
 
               <div className="analysis-panels">
-                {/* Structured Lab Values Section - NEW */}
-                <LabValuesDisplay labValues={labValues} />
-
-                {analysis && (
-                  <div className="medical-insight animate-fade-in">
+                {/* Check if this is a medical image report */}
+                {selectedReport.summary_text && selectedReport.summary_text.includes('Medical Image Analysis') ? (
+                  <div className="xray-analysis animate-fade-in">
                     <div className="insight-header">
                       <CheckCircle color="#00ff88" size={24} />
-                      <h3>AI Clinical Assessment</h3>
-                      <span className={`confidence-tag ${analysis.confidence}`}>
-                        {analysis.confidence} confidence
-                      </span>
+                      <h3>Medical Image Analysis</h3>
                     </div>
-
-                    <div className="explanation-text">
-                      <p>{analysis.explanation}</p>
+                    <div className="explanation-text xray-findings">
+                      {selectedReport.summary_text.split('\n').map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
                     </div>
-
-                    <div className="findings-grid">
-                      <h4>Core Findings</h4>
-                      <ul>
-                        {analysis.findings?.map((f, i) => (
-                          <li key={i}>{f}</li>
-                        ))}
-                      </ul>
+                    <div className="disclaimer-box">
+                      <AlertCircle size={16} />
+                      <span>⚠️ This is an AI-generated preliminary analysis. Always consult a qualified radiologist for definitive diagnosis.</span>
                     </div>
                   </div>
-                )}
+                ) : (
+                  <>
+                    {/* Structured Lab Values Section */}
+                    <LabValuesDisplay labValues={labValues} />
 
-                {selectedReport.summary_text && !analysis && (
-                  <div className="basic-summary animate-fade-in">
-                    <h3>Auto-Generated Summary</h3>
-                    <p>{selectedReport.summary_text}</p>
-                  </div>
-                )}
+                    {analysis && (
+                      <div className="medical-insight animate-fade-in">
+                        <div className="insight-header">
+                          <CheckCircle color="#00ff88" size={24} />
+                          <h3>AI Clinical Assessment</h3>
+                          <span className={`confidence-tag ${analysis.confidence}`}>
+                            {analysis.confidence} confidence
+                          </span>
+                        </div>
 
-                {!analysis && !loading && (
-                  <div className="empty-viewer">
-                    <AlertCircle size={48} color="var(--text-secondary)" />
-                    <p>Click "Generate Medical Explanation" to start AI reasoning.</p>
-                  </div>
+                        <div className="explanation-text">
+                          <p>{analysis.explanation}</p>
+                        </div>
+
+                        <div className="findings-grid">
+                          <h4>Core Findings</h4>
+                          <ul>
+                            {analysis.findings?.map((f, i) => (
+                              <li key={i}>{f}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedReport.summary_text && !analysis && (
+                      <div className="basic-summary animate-fade-in">
+                        <h3>Auto-Generated Summary</h3>
+                        <p>{selectedReport.summary_text}</p>
+                      </div>
+                    )}
+
+                    {!analysis && !loading && !selectedReport.summary_text && (
+                      <div className="empty-viewer">
+                        <AlertCircle size={48} color="var(--text-secondary)" />
+                        <p>Click "Generate Medical Explanation" to start AI reasoning.</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -359,6 +404,31 @@ const Reports = () => {
           cursor: pointer;
           transition: all 0.2s ease;
           border: 1px solid transparent;
+          position: relative;
+        }
+
+        .r-meta {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .delete-report-btn {
+          opacity: 0;
+          background: rgba(239, 68, 68, 0.1);
+          border: none;
+          color: #ef4444;
+          padding: 6px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .report-nav-item:hover .delete-report-btn {
+          opacity: 1;
+        }
+
+        .delete-report-btn:hover {
+          background: rgba(239, 68, 68, 0.2);
         }
 
         .report-nav-item:hover {
@@ -545,6 +615,35 @@ const Reports = () => {
           height: 100%;
           gap: 20px;
           color: var(--text-secondary);
+        }
+
+        .xray-analysis {
+          background: rgba(58, 134, 255, 0.05);
+          border: 1px solid rgba(58, 134, 255, 0.3);
+          border-radius: 20px;
+          padding: 24px;
+        }
+
+        .xray-findings {
+          line-height: 1.8;
+          white-space: pre-wrap;
+        }
+
+        .xray-findings p {
+          margin-bottom: 12px;
+        }
+
+        .disclaimer-box {
+          margin-top: 24px;
+          padding: 16px;
+          background: rgba(255, 193, 7, 0.1);
+          border: 1px solid rgba(255, 193, 7, 0.3);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: #ffc107;
+          font-size: 14px;
         }
       `}</style>
     </div>

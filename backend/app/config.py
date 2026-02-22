@@ -13,5 +13,6 @@ class Settings:
     HF_MODEL_ID = os.getenv("HF_MODEL_ID")
 
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 settings = Settings()

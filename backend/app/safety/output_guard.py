@@ -37,30 +37,12 @@ class OutputSafetyGuard:
             return result["sanitized_text"]
     """
     
-    # Medical diagnoses that should not be stated by AI
+    # Medical diagnoses - only block if AI is making NEW diagnosis
     FORBIDDEN_DIAGNOSES = [
-        # Acute conditions
-        "heart attack", "myocardial infarction", "stroke", "cva",
+        # Only severe conditions that need immediate care
+        "heart attack", "myocardial infarction", "stroke",
         "pulmonary embolism", "sepsis", "anaphylaxis",
-        
-        # Chronic diseases
-        "diabetes", "type 1 diabetes", "type 2 diabetes",
-        "cancer", "carcinoma", "lymphoma", "leukemia", "tumor",
-        "hypertension", "high blood pressure",
-        "copd", "emphysema", "asthma",
-        "alzheimer", "dementia", "parkinson",
-        "hiv", "aids",
-        
-        # Infections
-        "pneumonia", "tuberculosis", "tb", "meningitis",
-        "covid-19", "coronavirus",
-        
-        # Psychiatric
-        "schizophrenia", "bipolar disorder", "depression",
-        
-        # Neurological
-        "epilepsy", "seizure disorder", "multiple sclerosis", "ms",
-        "migraine"
+        "cancer", "carcinoma", "lymphoma", "leukemia",
     ]
     
     # Emergency symptoms requiring immediate medical attention
@@ -91,12 +73,10 @@ class OutputSafetyGuard:
         r'\b(severe pain|pain 10/10|unbearable pain)\b',
     ]
     
-    # Prescription/dosage patterns
+    # Prescription/dosage patterns - allow OTC mentions
     PRESCRIPTION_PATTERNS = [
-        r'\btake \d+\s?(mg|ml|tablets?|pills?)\b',
-        r'\bdose of \d+\b',
         r'\bprescribe\b',
-        r'\b\d+\s?mg of \w+\b',
+        r'\b\d+\s?mg of (prescription|rx)\b',
     ]
     
     # Implausible medical values (hallucination detection)

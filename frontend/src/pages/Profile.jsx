@@ -8,6 +8,7 @@ const Profile = () => {
         gender: '',
         height_cm: '',
         weight_kg: '',
+        blood_type: '',
         activity_level: 'Moderate',
         dietary_preferences: '',
         known_conditions: '',
@@ -85,6 +86,20 @@ const Profile = () => {
                             <div className="input-field">
                                 <label>Weight (kg)</label>
                                 <input type="number" name="weight_kg" value={profile.weight_kg || ''} onChange={handleChange} />
+                            </div>
+                            <div className="input-field">
+                                <label>Blood Type</label>
+                                <select name="blood_type" value={profile.blood_type || ''} onChange={handleChange}>
+                                    <option value="">Select</option>
+                                    <option value="A+">A+</option>
+                                    <option value="A-">A-</option>
+                                    <option value="B+">B+</option>
+                                    <option value="B-">B-</option>
+                                    <option value="AB+">AB+</option>
+                                    <option value="AB-">AB-</option>
+                                    <option value="O+">O+</option>
+                                    <option value="O-">O-</option>
+                                </select>
                             </div>
                         </div>
                     </div>

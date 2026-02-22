@@ -49,6 +49,7 @@ const Dashboard = () => {
                     <div className="stat-info">
                         <span className="stat-label">Body Metrics</span>
                         <span className="stat-value">{profile?.weight_kg ? `${profile.weight_kg}kg / ${profile.height_cm}cm` : 'Update profile'}</span>
+                        {profile?.blood_type && <span className="stat-sub">Blood: {profile.blood_type}</span>}
                     </div>
                 </div>
 
@@ -157,6 +158,13 @@ const Dashboard = () => {
         .stat-value {
           font-size: 20px;
           font-weight: 700;
+        }
+
+        .stat-sub {
+          display: block;
+          font-size: 13px;
+          color: var(--text-secondary);
+          margin-top: 4px;
         }
 
         .main-grid {

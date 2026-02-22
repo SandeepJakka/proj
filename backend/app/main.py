@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from app.db.database import engine
 from app.db import models
-from app.db.models_lab_values import LabValue  # Import new model
+from app.db.models_lab_values import LabValue
+from app.db.models_chat import ChatSession, ChatMessage
 from app.api import users, chat, medical, reports, profile, lifestyle, auth
 
 

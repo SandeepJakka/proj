@@ -21,8 +21,11 @@ export const explainReport = (reportId) => api.post(`/reports/${reportId}/explai
 export const getReports = () => api.get('/reports/');
 export const getLabValues = (reportId) => api.get(`/reports/${reportId}/lab-values`);
 export const getTrends = () => api.get('/reports/analytics/trends');
-export const sendMessage = (message) => api.post('/chat/', { message });
+export const sendMessage = (message, sessionId) => api.post('/chat/', { message, session_id: sessionId });
+export const getChatSessions = () => api.get('/chat/sessions');
 export const getDietPlan = (goal) => api.post('/lifestyle/diet', { goal });
 export const getWorkoutPlan = (goal) => api.post('/lifestyle/workout', { goal });
+export const startDietConsultation = (goal) => api.post('/lifestyle/diet/consult', { goal });
+export const startWorkoutConsultation = (goal) => api.post('/lifestyle/workout/consult', { goal });
 
 export default api;

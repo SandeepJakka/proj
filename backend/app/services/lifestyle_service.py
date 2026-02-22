@@ -1,47 +1,72 @@
-from app.services.local_llm import LocalMedicalLLM
+from app.services.llm_service import medical_llm_response
 from app.db.models_profile import HealthProfile
 
-async def generate_diet_plan(profile: HealthProfile, goal: str = "General Health") -> str:
-    llm = LocalMedicalLLM.get_instance()
-    
+async def start_plan_consultation(profile: HealthProfile, plan_type: str, lab_summary: str = "") -> str:
+    """Start interactive consultation before generating plan"""
     system_prompt = (
-        "You are an expert nutritionist. Create a personalized meal plan based on the user's profile. "
-        "Consider their dietary preferences, allergies, and health conditions carefully. "
-        "Format the output as a clear Markdown guide."
+        "You are a caring doctor starting a consultation to create a personalized plan.\n"
+        "Review the patient's profile and lab results, then ask 3-4 specific questions to understand:\n"
+        "- Current eating habits / exercise routine\n"
+        "- Dietary restrictions, allergies, food preferences\n"
+        "- Physical limitations, injuries, pain\n"
+        "- Daily schedule and lifestyle\n"
+        "- Goals and motivation\n\n"
+        "Be warm, encouraging, and conversational. Show you care about their health journey."
     )
     
-    user_context = (
-        f"User Profile:\n"
-        f"- Age: {profile.age}, Gender: {profile.gender}\n"
-        f"- Weight: {profile.weight_kg}kg, Height: {profile.height_cm}cm\n"
-        f"- Dietary Preferences: {profile.dietary_preferences or 'None'}\n"
-        f"- Allergies: {profile.allergies or 'None'}\n"
-        f"- Health Conditions: {profile.known_conditions or 'None'}\n"
-        f"- Activity Level: {profile.activity_level or 'Moderate'}\n"
-        f"- Goal: {goal}"
-    )
-    
-    prompt = f"{user_context}\n\nPlease generate a 1-day sample meal plan with advice."
-    
-    return llm.generate_raw(system_prompt, prompt)
+    context = f"""Patient Profile:
+- Age: {profile.age}, Gender: {profile.gender}
+- Weight: {profile.weight_kg}kg, Height: {profile.height_cm}cm
+- Activity: {profile.activity_level}
+- Known Conditions: {profile.known_conditions or 'None'}
+- Allergies: {profile.allergies or 'None'}
+- Dietary Preferences: {profile.dietary_preferences or 'None'}
 
-async def generate_workout_plan(profile: HealthProfile, goal: str = "General Fitness") -> str:
-    llm = LocalMedicalLLM.get_instance()
+{lab_summary}
+
+You're creating a {plan_type} plan. Start the consultation by greeting them and asking your first questions."""
     
-    system_prompt = (
-        "You are an expert fitness coach. Create a personalized workout routine. "
-        "Safety is priority #1. Avoid exercises that could aggravate known conditions. "
-        "Format as Markdown."
-    )
+    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": context}]
+    return await medical_llm_response(messages)
+
+async def generate_final_plan(profile: HealthProfile, plan_type: str, conversation: str, lab_summary: str = "") -> str:
+    """Generate final plan after consultation"""
+    if plan_type == "nutrition":
+        system_prompt = (
+            "You are an expert nutritionist creating a personalized 7-day meal plan.\n"
+            "Based on the consultation conversation, create a detailed plan that:\n"
+            "- Addresses their specific dietary needs and preferences\n"
+            "- Considers lab values and health conditions\n"
+            "- Respects their lifestyle and schedule\n"
+            "- Includes specific meals, portions, and recipes\n"
+            "- Provides shopping list and meal prep tips\n\n"
+            "Format with clear sections, meal times, and actionable guidance."
+        )
+    else:
+        system_prompt = (
+            "You are an expert fitness coach creating a personalized weekly workout plan.\n"
+            "Based on the consultation conversation, create a detailed plan that:\n"
+            "- Matches their fitness level and goals\n"
+            "- Avoids any mentioned injuries or limitations\n"
+            "- Fits their schedule and preferences\n"
+            "- Includes specific exercises, sets, reps, duration\n"
+            "- Provides progression guidelines and safety tips\n\n"
+            "Format with clear weekly schedule and exercise instructions."
+        )
     
-    user_context = (
-        f"User Profile:\n"
-        f"- Age: {profile.age}, Gender: {profile.gender}\n"
-        f"- Activity Level: {profile.activity_level}\n"
-        f"- Health Conditions: {profile.known_conditions or 'None'}\n"
-        f"- Goal: {goal}"
-    )
+    context = f"""Patient Profile:
+- Age: {profile.age}, Gender: {profile.gender}
+- Weight: {profile.weight_kg}kg, Height: {profile.height_cm}cm
+- Activity: {profile.activity_level}
+- Conditions: {profile.known_conditions or 'None'}
+- Allergies: {profile.allergies or 'None'}
+
+{lab_summary}
+
+Consultation Conversation:
+{conversation}
+
+Create a comprehensive, personalized {plan_type} plan based on everything discussed."""
     
-    prompt = f"{user_context}\n\nPlease generate a safe, effective workout plan."
-    
-    return llm.generate_raw(system_prompt, prompt)
+    messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": context}]
+    return await medical_llm_response(messages)

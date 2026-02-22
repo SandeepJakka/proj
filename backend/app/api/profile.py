@@ -13,6 +13,7 @@ class HealthProfileBase(BaseModel):
     gender: Optional[str] = None
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
+    blood_type: Optional[str] = None
     activity_level: Optional[str] = None
     dietary_preferences: Optional[str] = None
     known_conditions: Optional[str] = None

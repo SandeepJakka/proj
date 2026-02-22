@@ -1,5 +1,4 @@
 def medical_disclaimer():
     return (
-        "\n\n⚠️ Disclaimer: This information is for educational purposes only "
-        "and is not a medical diagnosis. Please consult a qualified healthcare professional."
+        "\n\n💡 Note: This is general health guidance. For serious concerns or persistent symptoms, please consult your doctor."
     )

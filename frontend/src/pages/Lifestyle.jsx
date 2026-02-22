@@ -1,25 +1,23 @@
 import React, { useState } from 'react';
-import { getDietPlan, getWorkoutPlan } from '../services/api';
-import { Utensils, Dumbbell, Sparkles, Loader, ChevronRight } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import { useNavigate } from 'react-router-dom';
+import { startDietConsultation, startWorkoutConsultation } from '../services/api';
+import { Utensils, Dumbbell, MessageCircle, Loader } from 'lucide-react';
 
 const Lifestyle = () => {
-    const [dietPlan, setDietPlan] = useState("");
-    const [workoutPlan, setWorkoutPlan] = useState("");
-    const [loadingType, setLoadingType] = useState(null); // 'diet' or 'workout'
+    const navigate = useNavigate();
+    const [loadingType, setLoadingType] = useState(null);
 
-    const fetchPlan = async (type) => {
+    const startConsultation = async (type) => {
         setLoadingType(type);
         try {
-            if (type === 'diet') {
-                const res = await getDietPlan("General Health");
-                setDietPlan(res.data.markdown_plan);
-            } else {
-                const res = await getWorkoutPlan("General Fitness");
-                setWorkoutPlan(res.data.markdown_plan);
-            }
+            const res = type === 'diet' 
+                ? await startDietConsultation("General Health")
+                : await startWorkoutConsultation("General Fitness");
+            
+            navigate(`/chat?session=${res.data.session_id}`);
         } catch (err) {
-            console.error("Plan generation failed", err);
+            console.error("Consultation failed", err);
+            alert(err.response?.data?.detail || "Failed to start consultation");
         } finally {
             setLoadingType(null);
         }
@@ -44,24 +42,27 @@ const Lifestyle = () => {
                         </div>
                         <button
                             className="btn-primary"
-                            onClick={() => fetchPlan('diet')}
+                            onClick={() => startConsultation('diet')}
                             disabled={loadingType === 'diet'}
                         >
-                            {loadingType === 'diet' ? <Loader className="spin" size={18} /> : 'Generate Plan'}
+                            {loadingType === 'diet' ? <Loader className="spin" size={18} /> : (
+                                <><MessageCircle size={18} /> Start Consultation</>
+                            )}
                         </button>
                     </div>
 
                     <div className="plan-body">
-                        {dietPlan ? (
-                            <div className="markdown-content">
-                                <ReactMarkdown>{dietPlan}</ReactMarkdown>
-                            </div>
-                        ) : (
-                            <div className="plan-placeholder">
-                                <Sparkles size={40} color="var(--border-color)" />
-                                <p>Request a diet plan tailored to your profile.</p>
-                            </div>
-                        )}
+                        <div className="plan-info">
+                            <MessageCircle size={48} color="var(--accent-primary)" />
+                            <h3>Interactive Consultation</h3>
+                            <p>I'll ask you questions about your eating habits, preferences, and lifestyle to create a truly personalized nutrition plan.</p>
+                            <ul>
+                                <li>✓ Review your lab results and health profile</li>
+                                <li>✓ Understand your dietary preferences and restrictions</li>
+                                <li>✓ Learn about your daily routine and goals</li>
+                                <li>✓ Create a customized 7-day meal plan</li>
+                            </ul>
+                        </div>
                     </div>
                 </section>
 
@@ -76,24 +77,27 @@ const Lifestyle = () => {
                         </div>
                         <button
                             className="btn-primary"
-                            onClick={() => fetchPlan('workout')}
+                            onClick={() => startConsultation('workout')}
                             disabled={loadingType === 'workout'}
                         >
-                            {loadingType === 'workout' ? <Loader className="spin" size={18} /> : 'Generate Plan'}
+                            {loadingType === 'workout' ? <Loader className="spin" size={18} /> : (
+                                <><MessageCircle size={18} /> Start Consultation</>
+                            )}
                         </button>
                     </div>
 
                     <div className="plan-body">
-                        {workoutPlan ? (
-                            <div className="markdown-content">
-                                <ReactMarkdown>{workoutPlan}</ReactMarkdown>
-                            </div>
-                        ) : (
-                            <div className="plan-placeholder">
-                                <Sparkles size={40} color="var(--border-color)" />
-                                <p>Request a workout plan based on your activity level.</p>
-                            </div>
-                        )}
+                        <div className="plan-info">
+                            <MessageCircle size={48} color="var(--accent-primary)" />
+                            <h3>Interactive Consultation</h3>
+                            <p>I'll ask about your fitness level, any injuries or limitations, and your goals to design a safe and effective workout plan.</p>
+                            <ul>
+                                <li>✓ Assess your current fitness level</li>
+                                <li>✓ Identify any physical limitations or injuries</li>
+                                <li>✓ Understand your schedule and preferences</li>
+                                <li>✓ Create a personalized weekly workout routine</li>
+                            </ul>
+                        </div>
                     </div>
                 </section>
             </div>
@@ -166,28 +170,47 @@ const Lifestyle = () => {
           color: var(--text-secondary);
         }
 
-        .markdown-content {
+        .plan-info {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          gap: 20px;
+          padding: 40px;
+        }
+
+        .plan-info h3 {
+          font-size: 24px;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .plan-info p {
+          font-size: 16px;
+          color: var(--text-secondary);
+          max-width: 500px;
+          line-height: 1.6;
+        }
+
+        .plan-info ul {
+          list-style: none;
+          padding: 0;
+          text-align: left;
           color: var(--text-primary);
         }
 
-        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
-           margin: 20px 0 10px 0;
-           color: var(--accent-primary);
+        .plan-info li {
+          padding: 8px 0;
+          font-size: 15px;
         }
 
-        .markdown-content p {
-          margin-bottom: 15px;
-          color: var(--text-primary);
+        .btn-primary {
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
 
-        .markdown-content ul {
-          margin-left: 20px;
-          margin-bottom: 15px;
-        }
 
-        .markdown-content li {
-          margin-bottom: 8px;
-        }
 
         .spin {
           animation: spin 1s linear infinite;
