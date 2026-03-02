@@ -4,6 +4,8 @@ from app.db import models
 from app.db.models_chat import ChatMessage, ChatSession
 from app.db.models_reports import Report, ReportExtract
 from app.db.models_profile import HealthProfile
+from app.db.models_profile import HealthProfile
+from app.utils.encryption import encrypt_text, decrypt_text
 import json
 
 def get_health_profile(db: Session, user_id: int):
@@ -49,7 +51,7 @@ def save_message(db: Session, session_id: str, user_id: int, role: str, content:
         session_id=session_id,
         user_id=user_id,
         role=role,
-        content=content
+        content=encrypt_text(content)
     )
     db.add(msg)
     db.commit()
@@ -61,13 +63,18 @@ def save_message(db: Session, session_id: str, user_id: int, role: str, content:
         db.commit()
 
 def get_recent_messages(db: Session, session_id: str, limit: int = 6):
-    return (
+    messages = (
         db.query(ChatMessage)
         .filter(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.desc())
         .limit(limit)
         .all()[::-1]
     )
+    # Decrypt contents for returning
+    for m in messages:
+        db.expunge(m)
+        m.content = decrypt_text(m.content)
+    return messages
 
 def get_latest_lab_summary(db: Session, user_id: int, limit: int = 5) -> str:
     from app.db.models_lab_values import LabValue
@@ -101,25 +108,40 @@ def get_user_reports(db: Session, user_id: int):
 def create_report_extract(db, report_id: int, raw_text: str, entities: dict, summary: str):
     extract = ReportExtract(
         report_id=report_id,
-        raw_text=raw_text,
-        entities_json=json.dumps(entities),
-        summary_text=summary
+        raw_text=encrypt_text(raw_text),
+        entities_json=encrypt_text(json.dumps(entities)),
+        summary_text=encrypt_text(summary)
     )
     db.add(extract)
     db.commit()
     return extract
 
 def get_report_extract(db, report_id: int):
-    return (
+    extract = (
         db.query(ReportExtract)
         .filter(ReportExtract.report_id == report_id)
         .first()
     )
+    if extract:
+        db.expunge(extract)
+        extract.raw_text = decrypt_text(extract.raw_text)
+        extract.entities_json = decrypt_text(extract.entities_json)
+        extract.summary_text = decrypt_text(extract.summary_text)
+        if hasattr(extract, "medical_analysis_json") and extract.medical_analysis_json:
+            extract.medical_analysis_json = decrypt_text(extract.medical_analysis_json)
+    return extract
 
 def update_report_analysis(db, report_id: int, analysis: dict):
-    extract = get_report_extract(db, report_id)
+    extract = db.query(ReportExtract).filter(ReportExtract.report_id == report_id).first()
     if extract:
-        extract.medical_analysis_json = json.dumps(analysis)
+        extract.medical_analysis_json = encrypt_text(json.dumps(analysis))
         db.commit()
         db.refresh(extract)
+        
+        # We also need to return the fully decrypted representation to callers
+        db.expunge(extract)
+        extract.raw_text = decrypt_text(extract.raw_text)
+        extract.entities_json = decrypt_text(extract.entities_json)
+        extract.summary_text = decrypt_text(extract.summary_text)
+        extract.medical_analysis_json = decrypt_text(extract.medical_analysis_json)
     return extract

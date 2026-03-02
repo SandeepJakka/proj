@@ -19,3 +19,17 @@ def create_user(email: str | None = None, db: Session = Depends(get_db)):
 def list_users(db: Session = Depends(get_db)):
     users = crud.get_users(db)
     return users
+
+from app.db.models import User
+from app.db.deps import get_current_user
+
+@router.get("/me")
+def get_user_me(current_user: User = Depends(get_current_user)):
+    """Returns the profile info for the logged-in user."""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "is_verified": current_user.is_verified,
+        "created_at": current_user.created_at.isoformat() if current_user.created_at else None
+    }

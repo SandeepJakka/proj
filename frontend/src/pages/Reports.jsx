@@ -1,8 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { getReports, uploadReport, explainReport, getTrends, getLabValues } from '../services/api';
-import { Upload, FileText, CheckCircle, Search, AlertCircle, Loader, TrendingUp, Calendar, Trash2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { getReports, uploadReport, explainReport, getTrends, deleteReport } from '../services/api';
+import { Upload, FileText, CheckCircle, Search, AlertCircle, Loader, TrendingUp, Trash2, Image } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import LabValuesDisplay from '../components/LabValuesDisplay';
+import toast from 'react-hot-toast';
+
+const STATUS_STYLE = (s) => {
+  const st = (s || '').toUpperCase();
+  const isRed = ['HIGH', 'ABNORMAL', 'POSITIVE', 'SEEN', 'DETECTED'].includes(st);
+  const isAmber = st === 'LOW';
+  const isGreen = ['NORMAL', 'NEGATIVE', 'NOT SEEN', 'NOT DETECTED'].includes(st);
+  return {
+    padding: '2px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700,
+    background: isRed ? 'rgba(239,68,68,.15)' : isAmber ? 'rgba(245,158,11,.15)' : isGreen ? 'rgba(16,185,129,.15)' : 'rgba(107,114,128,.15)',
+    color: isRed ? '#EF4444' : isAmber ? '#F59E0B' : isGreen ? '#10B981' : '#9CA3AF',
+  };
+};
 
 const Reports = () => {
   const [reports, setReports] = useState([]);
@@ -10,90 +23,50 @@ const Reports = () => {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'trends'
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('list');
   const [trends, setTrends] = useState(null);
   const [loadingTrends, setLoadingTrends] = useState(false);
 
-  // New state for lab values
-  const [labValues, setLabValues] = useState([]);
-  const [loadingLabValues, setLoadingLabValues] = useState(false);
-
-  useEffect(() => {
-    fetchReports();
-  }, []);
+  useEffect(() => { fetchReports(); }, []);
 
   const fetchReports = async () => {
     try {
       const res = await getReports();
-      setReports(res.data);
-      if (res.data.length > 0 && !selectedReport) {
-        setSelectedReport(res.data[0]);
-      }
+      setReports(res.data || []);
     } catch (err) {
       console.error("Failed to fetch reports", err);
     }
   };
 
-  const deleteReport = async (reportId, e) => {
+  const handleDelete = async (reportId, e) => {
     e.stopPropagation();
-    if (!confirm('Delete this report?')) return;
+    if (!window.confirm('Delete this report?')) return;
+    // Optimistic update
+    setReports(prev => prev.filter(r => r.id !== reportId));
+    if (selectedReport?.id === reportId) { setSelectedReport(null); setAnalysis(null); }
     try {
-      await fetch(`http://127.0.0.1:8000/api/reports/${reportId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (selectedReport?.id === reportId) setSelectedReport(null);
-      fetchReports();
+      await deleteReport(reportId);
+      toast.success('Report deleted');
     } catch (err) {
-      console.error('Failed to delete report', err);
-    }
-  };
-
-  // Fetch lab values when report is selected
-  useEffect(() => {
-    if (selectedReport && viewMode === 'list') {
-      fetchLabValues(selectedReport.id);
-    }
-  }, [selectedReport, viewMode]);
-
-  const fetchLabValues = async (reportId) => {
-    setLoadingLabValues(true);
-    try {
-      const res = await getLabValues(reportId);
-      setLabValues(res.data.lab_values || []);
-    } catch (err) {
-      console.error("Failed to fetch lab values", err);
-      setLabValues([]);
-    } finally {
-      setLoadingLabValues(false);
+      toast.error('Failed to delete report');
+      fetchReports(); // Re-fetch on failure
     }
   };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-
     try {
-      const res = await uploadReport(formData);
+      await uploadReport(formData);
       await fetchReports();
-      
-      // Show different message for X-ray vs lab report
-      if (res.data.type === 'medical_image') {
-        alert(`✅ ${res.data.image_type} analyzed successfully!\n\n${res.data.disclaimer}`);
-      }
-      
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      toast.success('Report uploaded and analyzed!');
     } catch (err) {
-      alert("Upload failed. " + (err.response?.data?.detail || "Please try again."));
+      toast.error("Upload failed. " + (err.response?.data?.detail || "Please try again."));
     } finally {
       setUploading(false);
     }
@@ -106,7 +79,7 @@ const Reports = () => {
       const res = await explainReport(reportId);
       setAnalysis(res.data);
     } catch (err) {
-      console.error("Explanation failed", err);
+      toast.error("Explanation failed");
     } finally {
       setLoading(false);
     }
@@ -119,531 +92,284 @@ const Reports = () => {
       const res = await getTrends();
       setTrends(res.data);
     } catch (err) {
-      console.error("Failed to fetch trends", err);
+      toast.error("Failed to fetch trends");
     } finally {
       setLoadingTrends(false);
     }
   };
 
+  const formatDate = (d) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const filteredReports = reports.filter(r =>
+    r.filename?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const isImage = (ft) => ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes((ft || '').toLowerCase());
+
+  // Extract parameters from analysis response
+  const params = analysis?.structured_data?.parameters
+    || analysis?.gemini_extraction?.structured_data?.parameters
+    || [];
+  const critAlerts = analysis?.gemini_extraction?.critical_alerts
+    || analysis?.critical_alerts
+    || [];
+
   return (
-    <div className="reports-page">
-      <header className="page-header">
-        <div className="title-area">
-          <h1>Medical Intelligence</h1>
-          <p>Scan, extract, and understand clinical documentation instantly.</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+        <div className="page-header" style={{ marginBottom: 0 }}>
+          <h1>Medical Reports</h1>
+          <p>Your uploaded medical documents</p>
         </div>
-        <div className="action-btns">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
-            className={`btn-secondary ${viewMode === 'trends' ? 'active' : ''}`}
+            className={`btn btn-ghost ${viewMode === 'trends' ? 'btn-primary' : ''}`}
             onClick={fetchAnalytics}
           >
-            <TrendingUp size={18} />
-            Longitudinal Analysis
+            <TrendingUp size={16} /> Longitudinal Analysis
           </button>
-          <label className="upload-btn btn-primary">
-            <Upload size={18} />
-            {uploading ? 'Analyzing...' : 'Upload New Report'}
-            <input type="file" hidden onChange={handleFileUpload} disabled={uploading} />
+          <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
+            <Upload size={16} /> {uploading ? 'Analyzing…' : 'Upload New Report'}
+            <input type="file" hidden onChange={handleFileUpload} disabled={uploading} accept=".pdf,.jpg,.jpeg,.png" />
           </label>
         </div>
-      </header>
+      </div>
 
-      <div className="reports-layout">
-        <aside className="reports-sidebar glass-panel">
-          <div className="sidebar-header">
-            <h3>Archived Reports</h3>
-            {viewMode === 'trends' && (
-              <button className="btn-text" onClick={() => setViewMode('list')}>Back to List</button>
+      {/* Two-column layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, minHeight: 'calc(100vh - 220px)' }}>
+        {/* LEFT — Report List */}
+        <div className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '16px 16px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 700 }}>Archived Reports</h3>
+              {viewMode === 'trends' && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setViewMode('list')} style={{ fontSize: '0.75rem' }}>
+                  ← Back
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#21253A', padding: '8px 12px', borderRadius: 8, marginBottom: 12 }}>
+              <Search size={14} style={{ color: '#9CA3AF', flexShrink: 0 }} />
+              <input
+                type="text"
+                placeholder="Search files…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                style={{ background: 'transparent', border: 'none', color: '#F8F9FA', width: '100%', outline: 'none', fontSize: '0.8rem' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
+            {filteredReports.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '40px 16px', color: '#6B7280' }}>
+                <FileText size={28} style={{ opacity: 0.4, marginBottom: 8 }} />
+                <p style={{ fontSize: '0.8rem' }}>No reports uploaded yet</p>
+              </div>
             )}
-          </div>
-          <div className="search-reports">
-            <Search size={16} />
-            <input type="text" placeholder="Search files..." />
-          </div>
-          <div className="reports-list">
-            {reports.map((r) => (
+            {filteredReports.map(r => (
               <div
                 key={r.id}
-                className={`report-nav-item ${selectedReport?.id === r.id && viewMode === 'list' ? 'active' : ''}`}
-                onClick={() => {
-                  setSelectedReport(r);
-                  setAnalysis(null);
-                  setViewMode('list');
+                onClick={() => { setSelectedReport(r); setAnalysis(null); setViewMode('list'); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                  borderRadius: 8, cursor: 'pointer', marginBottom: 2, position: 'relative',
+                  borderLeft: selectedReport?.id === r.id ? '3px solid #2563EB' : '3px solid transparent',
+                  background: selectedReport?.id === r.id ? 'rgba(37,99,235,.08)' : 'transparent',
+                  transition: 'all .15s ease',
                 }}
+                onMouseEnter={e => { if (selectedReport?.id !== r.id) e.currentTarget.style.background = 'rgba(255,255,255,.03)'; }}
+                onMouseLeave={e => { if (selectedReport?.id !== r.id) e.currentTarget.style.background = 'transparent'; }}
               >
-                <FileText size={18} />
-                <div className="r-meta">
-                  <span className="r-name">{r.filename}</span>
-                  <span className="r-date">{new Date(r.created_at).toLocaleDateString()}</span>
+                <div style={{ color: isImage(r.file_type) ? '#F59E0B' : '#2563EB', flexShrink: 0 }}>
+                  {isImage(r.file_type) ? <Image size={16} /> : <FileText size={16} />}
                 </div>
-                <button className="delete-report-btn" onClick={(e) => deleteReport(r.id, e)}>
-                  <Trash2 size={14} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {r.filename?.length > 25 ? r.filename.slice(0, 25) + '…' : r.filename}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>{formatDate(r.created_at)}</div>
+                </div>
+                <button
+                  onClick={(e) => handleDelete(r.id, e)}
+                  className="delete-report-btn-inline"
+                  style={{
+                    opacity: 0, background: 'rgba(239,68,68,.1)', border: 'none', color: '#EF4444',
+                    padding: '4px 6px', borderRadius: 6, cursor: 'pointer', transition: 'opacity .15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                  title="Delete report"
+                >
+                  <Trash2 size={12} />
                 </button>
               </div>
             ))}
           </div>
-        </aside>
+        </div>
 
-        <main className="report-viewer card">
+        {/* RIGHT — Report Detail / Trends */}
+        <div className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {viewMode === 'trends' ? (
-            <div className="trends-view animate-fade-in">
-              <div className="viewer-header">
-                <h2>Health Progress & Trends</h2>
-                <p>Comparing {reports.length} reports across {reports.length > 0 ? (new Date(reports[reports.length - 1].created_at).getFullYear() - new Date(reports[0].created_at).getFullYear() + 1) : 0} year(s)</p>
-              </div>
-
+            <div style={{ padding: 28, overflowY: 'auto', flex: 1 }}>
+              <h2 style={{ marginBottom: 4 }}>Health Progress & Trends</h2>
+              <p style={{ fontSize: '0.85rem', marginBottom: 20 }}>Comparing {reports.length} reports</p>
               {loadingTrends ? (
-                <div className="loading-state">
-                  <Loader className="spin" size={48} />
-                  <p>Analyzing clinical history...</p>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 12, color: '#9CA3AF' }}>
+                  <Loader className="spin" size={32} /> <p>Analyzing clinical history…</p>
                 </div>
               ) : trends ? (
-                <div className="trends-content">
-                  <section className="overall-summary-card">
-                    <h3>Overall Clinical Progress</h3>
-                    <p>{trends.overall_summary}</p>
-                  </section>
-
-                  <div className="trends-grid">
-                    {trends.trends?.map((trend, i) => (
-                      <div key={i} className="trend-item card">
-                        <div className="trend-header">
-                          <h4>{trend.metric}</h4>
-                          <TrendingUp size={16} color="var(--accent-primary)" />
-                        </div>
-                        <div className="trend-data">
-                          {trend.entries?.map((entry, j) => (
-                            <div key={j} className="data-point">
-                              <span className="dp-date">{entry.date}</span>
-                              <span className="dp-val">{entry.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <p className="trend-obs">{trend.observation}</p>
-                      </div>
-                    ))}
-                  </div>
+                <div className="markdown-content">
+                  <ReactMarkdown>{trends.overall_summary || JSON.stringify(trends, null, 2)}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="empty-viewer">
-                  <AlertCircle size={48} />
-                  <p>Could not load trend data. Ensure you have analyzed at least two reports.</p>
+                <div style={{ textAlign: 'center', color: '#6B7280', padding: 40 }}>
+                  <AlertCircle size={36} style={{ marginBottom: 8 }} />
+                  <p>Could not load trend data. Upload at least 2 reports.</p>
                 </div>
               )}
             </div>
           ) : selectedReport ? (
-            <div className="viewer-content">
-              <div className="viewer-header">
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              {/* Report header */}
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #2A2D3A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                 <div>
-                  <h2>{selectedReport.filename}</h2>
-                  <span className="r-type">{selectedReport.file_type} Document</span>
+                  <h2 style={{ fontSize: '1.1rem', marginBottom: 4 }}>{selectedReport.filename}</h2>
+                  <span className="badge badge-blue" style={{ textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                    {selectedReport.file_type || 'document'}
+                  </span>
                 </div>
                 <button
-                  className="btn-primary"
+                  className="btn btn-primary btn-sm"
                   onClick={() => handleExplain(selectedReport.id)}
                   disabled={loading}
                 >
-                  {loading ? <Loader className="spin" size={18} /> : 'Generate Medical Explanation'}
+                  {loading ? <><Loader className="spin" size={14} /> Analyzing…</> : 'Generate Medical Explanation'}
                 </button>
               </div>
 
-              <div className="analysis-panels">
-                {/* Check if this is a medical image report */}
-                {selectedReport.summary_text && selectedReport.summary_text.includes('Medical Image Analysis') ? (
-                  <div className="xray-analysis animate-fade-in">
-                    <div className="insight-header">
-                      <CheckCircle color="#00ff88" size={24} />
-                      <h3>Medical Image Analysis</h3>
+              {/* Content */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Analysis results */}
+                {analysis && (
+                  <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    {/* Doc type badge */}
+                    {analysis.document_type && (
+                      <div>
+                        <span className="badge badge-purple">{analysis.document_type}</span>
+                      </div>
+                    )}
+
+                    {/* Lab Parameters Table */}
+                    {params.length > 0 && (
+                      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                        <div style={{ padding: '14px 18px', borderBottom: '1px solid #2A2D3A', fontWeight: 600, fontSize: '0.9rem' }}>
+                          Lab Values ({params.length} parameters)
+                        </div>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid #2A2D3A' }}>
+                                {['Test', 'Result', 'Reference Range', 'Status'].map(h => (
+                                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#9CA3AF', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {params.map((p, i) => (
+                                <tr key={i} style={{ borderBottom: '1px solid rgba(42,45,58,.5)' }}>
+                                  <td style={{ padding: '10px 14px', fontWeight: 500 }}>{p.name || p.test_name || '—'}</td>
+                                  <td style={{ padding: '10px 14px' }}>{p.value}{p.unit ? ` ${p.unit}` : ''}</td>
+                                  <td style={{ padding: '10px 14px', color: '#9CA3AF' }}>{p.reference_range || p.normal_range || '—'}</td>
+                                  <td style={{ padding: '10px 14px' }}><span style={STATUS_STYLE(p.status)}>{p.status || '—'}</span></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* AI Clinical Assessment */}
+                    <div style={{ background: '#1A1D27', border: '1px solid rgba(16,185,129,.2)', borderRadius: 12, padding: 20 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                        <CheckCircle color="#10B981" size={20} />
+                        <h3 style={{ fontSize: '0.95rem' }}>AI Clinical Assessment</h3>
+                        {analysis.confidence && (
+                          <span style={{ marginLeft: 'auto', padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700, background: 'rgba(16,185,129,.12)', color: '#10B981', textTransform: 'uppercase' }}>
+                            {analysis.confidence}
+                          </span>
+                        )}
+                      </div>
+                      <div className="markdown-content">
+                        <ReactMarkdown>{analysis.explanation || ''}</ReactMarkdown>
+                      </div>
                     </div>
-                    <div className="explanation-text xray-findings">
-                      {selectedReport.summary_text.split('\n').map((line, i) => (
-                        <p key={i}>{line}</p>
-                      ))}
-                    </div>
-                    <div className="disclaimer-box">
-                      <AlertCircle size={16} />
-                      <span>⚠️ This is an AI-generated preliminary analysis. Always consult a qualified radiologist for definitive diagnosis.</span>
+
+                    {/* Critical Alerts */}
+                    {critAlerts.length > 0 && (
+                      <div style={{ background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, padding: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: '#EF4444', fontWeight: 600, fontSize: '0.9rem' }}>
+                          <AlertCircle size={18} /> Critical Alerts
+                        </div>
+                        <ul style={{ paddingLeft: 20, color: '#F87171', fontSize: '0.85rem' }}>
+                          {critAlerts.map((a, i) => <li key={i} style={{ marginBottom: 4 }}>{typeof a === 'string' ? a : a.message || JSON.stringify(a)}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Disclaimer */}
+                    <div style={{ fontSize: '0.72rem', color: '#6B7280', borderTop: '1px solid #2A2D3A', paddingTop: 12 }}>
+                      ⚕️ This analysis is AI-generated for informational purposes only. Always consult a qualified healthcare professional for diagnosis and treatment.
                     </div>
                   </div>
-                ) : (
-                  <>
-                    {/* Structured Lab Values Section */}
-                    <LabValuesDisplay labValues={labValues} />
+                )}
 
-                    {analysis && (
-                      <div className="medical-insight animate-fade-in">
-                        <div className="insight-header">
-                          <CheckCircle color="#00ff88" size={24} />
-                          <h3>AI Clinical Assessment</h3>
-                          <span className={`confidence-tag ${analysis.confidence}`}>
-                            {analysis.confidence} confidence
-                          </span>
-                        </div>
+                {/* Summary if no analysis generated yet */}
+                {!analysis && selectedReport.summary_text && (
+                  <div className="animate-in">
+                    <h3 style={{ marginBottom: 10, fontSize: '0.95rem' }}>Auto-Generated Summary</h3>
+                    <div className="markdown-content">
+                      <ReactMarkdown>{selectedReport.summary_text}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
 
-                        <div className="explanation-text">
-                          <p>{analysis.explanation}</p>
-                        </div>
+                {/* Empty state */}
+                {!analysis && !loading && !selectedReport.summary_text && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: '#6B7280', gap: 12 }}>
+                    <AlertCircle size={40} style={{ opacity: 0.3 }} />
+                    <p style={{ fontSize: '0.875rem' }}>Click <strong>"Generate Medical Explanation"</strong> to start AI reasoning.</p>
+                  </div>
+                )}
 
-                        <div className="findings-grid">
-                          <h4>Core Findings</h4>
-                          <ul>
-                            {analysis.findings?.map((f, i) => (
-                              <li key={i}>{f}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedReport.summary_text && !analysis && (
-                      <div className="basic-summary animate-fade-in">
-                        <h3>Auto-Generated Summary</h3>
-                        <p>{selectedReport.summary_text}</p>
-                      </div>
-                    )}
-
-                    {!analysis && !loading && !selectedReport.summary_text && (
-                      <div className="empty-viewer">
-                        <AlertCircle size={48} color="var(--text-secondary)" />
-                        <p>Click "Generate Medical Explanation" to start AI reasoning.</p>
-                      </div>
-                    )}
-                  </>
+                {/* Loading */}
+                {loading && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 10, color: '#9CA3AF' }}>
+                    <Loader className="spin" size={32} /> <p>Generating medical analysis…</p>
+                  </div>
                 )}
               </div>
             </div>
           ) : (
-            <div className="no-report-selected">
-              <FileText size={64} color="var(--border-color)" />
-              <h2>Select a report to view analysis</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: '#6B7280', gap: 16 }}>
+              <FileText size={48} style={{ opacity: 0.2 }} />
+              <p>Select a report to view details</p>
             </div>
           )}
-        </main>
+        </div>
       </div>
 
-      <style jsx>{`
-        .reports-page {
-          display: flex;
-          flex-direction: column;
-          gap: 32px;
-        }
-
-        .action-btns {
-          display: flex;
-          gap: 12px;
-        }
-
-        .btn-secondary {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid var(--border-color);
-          color: white;
-          padding: 12px 20px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .btn-secondary.active {
-          border-color: var(--accent-primary);
-          background: rgba(58, 134, 255, 0.1);
-          color: var(--accent-primary);
-        }
-
-        .reports-layout {
-          display: grid;
-          grid-template-columns: 320px 1fr;
-          gap: 24px;
-          height: calc(100vh - 250px);
-        }
-
-        .reports-sidebar {
-          padding: 24px;
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-          overflow-y: auto;
-        }
-
-        .sidebar-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .search-reports {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: rgba(255, 255, 255, 0.05);
-          padding: 10px 14px;
-          border-radius: 12px;
-          color: var(--text-secondary);
-        }
-
-        .search-reports input {
-          background: transparent;
-          border: none;
-          color: white;
-          width: 100%;
-          outline: none;
-          font-size: 14px;
-        }
-
-        .reports-list {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .report-nav-item {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          padding: 12px;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          border: 1px solid transparent;
-          position: relative;
-        }
-
-        .r-meta {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .delete-report-btn {
-          opacity: 0;
-          background: rgba(239, 68, 68, 0.1);
-          border: none;
-          color: #ef4444;
-          padding: 6px;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .report-nav-item:hover .delete-report-btn {
-          opacity: 1;
-        }
-
-        .delete-report-btn:hover {
-          background: rgba(239, 68, 68, 0.2);
-        }
-
-        .report-nav-item:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        .report-nav-item.active {
-          background: rgba(58, 134, 255, 0.1);
-          border-color: rgba(58, 134, 255, 0.3);
-          color: var(--accent-primary);
-        }
-
-        .r-name {
-          display: block;
-          font-size: 14px;
-          font-weight: 600;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 200px;
-        }
-
-        .r-date {
-          font-size: 12px;
-          color: var(--text-secondary);
-        }
-
-        .report-viewer {
-          padding: 0;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .viewer-header {
-          padding: 30px;
-          border-bottom: 1px solid var(--border-color);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .trends-view .viewer-header {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 4px;
-        }
-
-        .r-type {
-          font-size: 14px;
-          color: var(--text-secondary);
-        }
-
-        .analysis-panels {
-          padding: 30px;
-        }
-
-        .overall-summary-card {
-          margin: 30px;
-          padding: 24px;
-          background: var(--surface-lighter);
-          border-radius: 20px;
-          border-left: 4px solid var(--accent-primary);
-        }
-
-        .overall-summary-card h3 {
-          font-size: 18px;
-          margin-bottom: 12px;
-          color: var(--accent-primary);
-        }
-
-        .trends-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-          gap: 20px;
-          padding: 0 30px 30px;
-        }
-
-        .trend-item {
-          padding: 20px;
-        }
-
-        .trend-header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 16px;
-        }
-
-        .trend-data {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          margin-bottom: 16px;
-          padding-bottom: 16px;
-          border-bottom: 1px solid var(--border-color);
-        }
-
-        .data-point {
-          display: flex;
-          justify-content: space-between;
-          font-size: 14px;
-        }
-
-        .dp-date {
-          color: var(--text-secondary);
-        }
-
-        .dp-val {
-          font-weight: 700;
-        }
-
-        .trend-obs {
-          font-size: 14px;
-          color: var(--text-primary);
-          line-height: 1.4;
-        }
-
-        .loading-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 300px;
-          gap: 20px;
-          color: var(--text-secondary);
-        }
-
-        .medical-insight {
-          background: rgba(0, 255, 136, 0.03);
-          border: 1px solid rgba(0, 255, 136, 0.2);
-          border-radius: 20px;
-          padding: 24px;
-        }
-
-        .insight-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 20px;
-        }
-
-        .confidence-tag {
-          margin-left: auto;
-          font-size: 12px;
-          text-transform: uppercase;
-          background: rgba(0, 255, 136, 0.1);
-          color: #00ff88;
-          padding: 4px 10px;
-          border-radius: 6px;
-          font-weight: 700;
-        }
-
-        .findings-grid {
-          margin-top: 24px;
-          padding-top: 24px;
-          border-top: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .findings-grid ul {
-          margin-top: 12px;
-          padding-left: 20px;
-          columns: 2;
-        }
-
-        .findings-grid li {
-          margin-bottom: 8px;
-          color: var(--text-primary);
-        }
-
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        .no-report-selected, .empty-viewer {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 100%;
-          gap: 20px;
-          color: var(--text-secondary);
-        }
-
-        .xray-analysis {
-          background: rgba(58, 134, 255, 0.05);
-          border: 1px solid rgba(58, 134, 255, 0.3);
-          border-radius: 20px;
-          padding: 24px;
-        }
-
-        .xray-findings {
-          line-height: 1.8;
-          white-space: pre-wrap;
-        }
-
-        .xray-findings p {
-          margin-bottom: 12px;
-        }
-
-        .disclaimer-box {
-          margin-top: 24px;
-          padding: 16px;
-          background: rgba(255, 193, 7, 0.1);
-          border: 1px solid rgba(255, 193, 7, 0.3);
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          color: #ffc107;
-          font-size: 14px;
+      <style>{`
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        div:hover > .delete-report-btn-inline { opacity: 1 !important; }
+        @media (max-width: 768px) {
+          div[style*="grid-template-columns: 300px"] { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>

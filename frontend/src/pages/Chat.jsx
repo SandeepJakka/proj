@@ -1,421 +1,428 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { sendMessage, getChatSessions } from '../services/api';
-import { Send, Bot, User, Sparkles, MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import toast, { Toaster } from 'react-hot-toast';
+import { useLanguage } from '../context/LanguageContext';
+import { guestChat, sendMessage as apiSend, getChatHistory, clearChatHistory, analyzeGuestReport, analyzeReport } from '../services/api';
+import { Send, Bot, User, Plus, Paperclip, Trash2, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
+
+const WELCOME = 'Hello! I am **Healthora AI**, your personal health assistant. Ask me anything about health, symptoms, diet, or your medical reports.\n\nI can respond in **English or Telugu** 🇮🇳';
+
+const isLoggedIn = () => !!localStorage.getItem('access_token');
 
 const Chat = () => {
-    const location = useLocation();
-    const [sessions, setSessions] = useState([]);
-    const [currentSessionId, setCurrentSessionId] = useState(null);
-    const [messages, setMessages] = useState([
-        { role: 'assistant', content: 'Hello! I am your Healthora Assistant. How can I help you regarding your medical data or symptoms today?' }
-    ]);
-    const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    const scrollRef = useRef(null);
+  const { language, toggleLanguage } = useLanguage();
+  const [messages, setMessages] = useState([{ role: 'assistant', content: WELCOME }]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(() => uuidv4());
+  const [sessions, setSessions] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const scrollRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const msgCount = messages.filter(m => m.role === 'user').length;
 
-    useEffect(() => {
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, loading]);
+
+  // Fix 2 step 3: Only load sessions list on mount, do NOT flatten all history
+  useEffect(() => {
+    if (isLoggedIn()) {
+      loadSessions();
+    }
+  }, []);
+
+  // Fix 4: loadSessions uses getChatHistory() (no session_id) to get structured sessions
+  const loadSessions = () => {
+    if (!isLoggedIn()) return;
+    getChatHistory()
+      .then(r => {
+        if (r.data?.sessions) {
+          setSessions(r.data.sessions);
+        }
+      })
+      .catch(() => { });
+  };
+
+  // Fix 2 step 1: Load a specific session's messages when clicked
+  const loadSession = async (session) => {
+    try {
+      setLoading(true);
+      setSessionId(session.session_id);
+      const res = await getChatHistory(session.session_id);
+      if (res.data?.messages?.length) {
+        setMessages(res.data.messages.map(m => ({ role: m.role, content: m.content })));
+      } else if (Array.isArray(res.data) && res.data.length) {
+        // Handle flat array fallback
+        setMessages(res.data.map(m => ({ role: m.role, content: m.content })));
+      } else {
+        setMessages([{ role: 'assistant', content: WELCOME }]);
+      }
+    } catch (err) {
+      toast.error('Could not load chat session');
+      setMessages([{ role: 'assistant', content: WELCOME }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startNewChat = () => {
+    setSessionId(uuidv4());
+    setMessages([{ role: 'assistant', content: WELCOME }]);
+  };
+
+  const handleClearHistory = async () => {
+    if (!window.confirm('Clear all chat history?')) return;
+    try {
+      await clearChatHistory();
+      toast.success('Chat history cleared');
+      startNewChat();
+      setSessions([]);
+    } catch (_) {
+      toast.error('Failed to clear history');
+    }
+  };
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || loading) return;
+
+    setMessages(prev => [...prev, { role: 'user', content: text }]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      let res;
+      if (isLoggedIn()) {
+        res = await apiSend(text, language, sessionId);
+        if (res.data.session_id) setSessionId(res.data.session_id);
         loadSessions();
-        
-        // Check for session parameter in URL
-        const params = new URLSearchParams(location.search);
-        const sessionParam = params.get('session');
-        if (sessionParam) {
-            loadSession(sessionParam);
-        }
-    }, [location]);
+      } else {
+        const history = messages
+          .filter(m => m.role !== 'system')
+          .map(m => ({ role: m.role, content: m.content }));
+        history.push({ role: 'user', content: text });
+        res = await guestChat(history, language);
+        if (res.data.session_id) setSessionId(res.data.session_id);
+      }
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: res.data.response,
+        isMedical: res.data.is_medical
+      }]);
+    } catch (err) {
+      toast.error('Failed to get a response. Please try again.');
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '⚠️ Sorry, I could not connect right now. Please try again.'
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [messages]);
+  // Fix 5: File upload handler
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const loadSessions = async () => {
-        try {
-            const res = await getChatSessions();
-            setSessions(res.data);
-        } catch (err) {
-            console.error('Failed to load sessions', err);
-        }
-    };
+    const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (!allowed.includes(file.type)) {
+      toast.error('Only JPG, PNG, PDF files allowed');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be under 10MB');
+      return;
+    }
 
-    const startNewChat = () => {
-        setCurrentSessionId(null);
-        setMessages([{ role: 'assistant', content: 'Hello! I am your Healthora Assistant. How can I help you regarding your medical data or symptoms today?' }]);
-    };
+    setMessages(prev => [...prev, { role: 'user', content: `📎 Uploaded: ${file.name}` }]);
+    setLoading(true);
+    const uploadToast = toast.loading('Analyzing your report...');
 
-    const formatMessage = (text) => {
-        return text
-            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\n\n/g, '<br/><br/>')
-            .replace(/\n/g, '<br/>')
-            .replace(/^(\d+\.\s)/gm, '<br/>$1')
-            .replace(/^([-•]\s)/gm, '<br/>$1');
-    };
+    try {
+      let res;
+      if (isLoggedIn()) {
+        res = await analyzeReport(file, language);
+      } else {
+        res = await analyzeGuestReport(file, language);
+      }
 
-    const loadSession = async (sessionId) => {
-        setCurrentSessionId(sessionId);
-        setLoading(true);
-        try {
-            const res = await sendMessage('', sessionId);
-            const history = res.data.history || [];
-            setMessages(history.length > 0 ? history : [{ role: 'assistant', content: 'Session loaded. How can I help you?' }]);
-        } catch (err) {
-            console.error('Failed to load session', err);
-        } finally {
-            setLoading(false);
-        }
-    };
+      const data = res.data;
+      const explanation = data.explanation
+        || data.gemini_extraction?.raw_findings
+        || 'Could not analyze this file.';
 
-    const deleteSession = async (sessionId, e) => {
-        e.stopPropagation();
-        if (!confirm('Delete this chat?')) return;
-        try {
-            await fetch(`http://127.0.0.1:8000/api/chat/sessions/${sessionId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            });
-            if (currentSessionId === sessionId) startNewChat();
-            loadSessions();
-        } catch (err) {
-            console.error('Failed to delete session', err);
-        }
-    };
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: explanation,
+        isMedical: true
+      }]);
+      toast.success('Report analyzed', { id: uploadToast });
+    } catch (err) {
+      toast.error('Failed to analyze report', { id: uploadToast });
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '⚠️ Could not analyze the file. Please try again or use the Reports page.'
+      }]);
+    } finally {
+      setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
-    const handleSend = async (e) => {
-        e.preventDefault();
-        if (!input.trim() || loading) return;
+  const SIDEBAR_W = 260;
 
-        const userMsg = input.trim();
-        setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-        setInput('');
-        setLoading(true);
+  return (
+    <div style={{ height: '100vh', display: 'flex', background: '#0F1117', overflow: 'hidden' }}>
+      <Toaster position="top-right" toastOptions={{ className: 'toast-dark' }} />
 
-        try {
-            const res = await sendMessage(userMsg, currentSessionId);
-            setMessages(prev => [...prev, { role: 'assistant', content: res.data.response, isMedical: res.data.is_medical }]);
-            
-            if (!currentSessionId) {
-                setCurrentSessionId(res.data.session_id);
-                loadSessions();
-            }
-        } catch (err) {
-            setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I am having trouble connecting to the intelligence core.' }]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="chat-page">
-            {sessions.length > 0 && (
-                <aside className="chat-sidebar">
-                    <button className="new-chat-btn" onClick={startNewChat}>
-                        <Plus size={18} /> New Chat
-                    </button>
-                    <div className="sessions-list">
-                        {sessions.map(session => (
-                            <div 
-                                key={session.session_id} 
-                                className={`session-item ${currentSessionId === session.session_id ? 'active' : ''}`}
-                                onClick={() => loadSession(session.session_id)}
-                            >
-                                <MessageSquare size={16} />
-                                <span>{session.title}</span>
-                                <button className="delete-btn" onClick={(e) => deleteSession(session.session_id, e)}>
-                                    <Trash2 size={14} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </aside>
-            )}
-            
-            <div className="chat-container card">
-                <div className="chat-header">
-                    <Bot size={24} color="var(--accent-primary)" />
-                    <div>
-                        <h3>MediPhi Intelligence</h3>
-                        <span className="typing-status">{loading ? 'AI is thinking...' : 'Ready to help'}</span>
-                    </div>
-                </div>
-
-                <div className="messages-area" ref={scrollRef}>
-                    {messages.map((msg, i) => (
-                        <div key={i} className={`message-wrapper ${msg.role}`}>
-                            <div className="msg-avatar">
-                                {msg.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
-                            </div>
-                            <div className={`message-bubble ${msg.isMedical ? 'medical-bubble' : ''}`}>
-                                {msg.isMedical && (
-                                    <div className="medical-tag">
-                                        <Sparkles size={12} /> Medical Insight
-                                    </div>
-                                )}
-                                <div className="message-content" dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }} />
-                            </div>
-                        </div>
-                    ))}
-                    {loading && (
-                        <div className="message-wrapper assistant">
-                            <div className="msg-avatar"><Bot size={16} /></div>
-                            <div className="message-bubble typing-dots">
-                                <span></span><span></span><span></span>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                <form className="chat-input-area" onSubmit={handleSend}>
-                    <input
-                        type="text"
-                        placeholder="Ask anything about your health..."
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        disabled={loading}
-                    />
-                    <button type="submit" className="send-btn btn-primary" disabled={!input.trim() || loading}>
-                        <Send size={18} />
-                    </button>
-                </form>
+      {/* Left Sidebar */}
+      <div style={{
+        width: sidebarOpen ? SIDEBAR_W : 0,
+        minWidth: sidebarOpen ? SIDEBAR_W : 0,
+        background: '#1A1D27',
+        borderRight: '1px solid #2A2D3A',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        transition: 'width .2s ease, min-width .2s ease',
+        flexShrink: 0,
+      }}>
+        {sidebarOpen && (
+          <>
+            {/* New Chat */}
+            <div style={{ padding: '16px 12px', borderBottom: '1px solid #2A2D3A' }}>
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={startNewChat}
+              >
+                <Plus size={16} /> New Chat
+              </button>
             </div>
 
-            <style jsx>{`
-        .chat-page {
-          height: calc(100vh - 160px);
-          display: flex;
-          gap: 20px;
-        }
+            {/* Sessions list */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+              {isLoggedIn() ? (
+                sessions.length > 0 ? (
+                  sessions.map((s, i) => (
+                    <div
+                      key={s.session_id || i}
+                      onClick={() => loadSession(s)}
+                      style={{
+                        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                        marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8,
+                        background: s.session_id === sessionId ? 'rgba(37,99,235,.15)' : 'transparent',
+                        color: s.session_id === sessionId ? '#2563EB' : '#9CA3AF',
+                        fontSize: '0.8rem',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={e => {
+                        if (s.session_id !== sessionId)
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                      }}
+                      onMouseLeave={e => {
+                        if (s.session_id !== sessionId)
+                          e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {s.title || 'Chat Session'}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '16px 12px', color: '#6B7280', fontSize: '0.8rem' }}>
+                    No past sessions yet
+                  </div>
+                )
+              ) : (
+                <div style={{ padding: '16px 12px' }}>
+                  <div style={{ color: '#F8F9FA', fontSize: '0.8rem', fontWeight: 600, marginBottom: 6 }}>
+                    Current Session
+                  </div>
+                  <div style={{ color: '#6B7280', fontSize: '0.75rem', lineHeight: 1.5 }}>
+                    Sign in to save your conversation history
+                  </div>
+                  <Link to="/login" className="btn btn-ghost btn-sm" style={{ marginTop: 10, width: '100%', justifyContent: 'center', display: 'flex' }}>
+                    Sign In
+                  </Link>
+                </div>
+              )}
+            </div>
 
-        .chat-sidebar {
-          width: 280px;
-          background: var(--surface-dark);
-          border-radius: 20px;
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        }
+            {/* Clear History (logged in only) */}
+            {isLoggedIn() && (
+              <div style={{ padding: '10px 12px', borderTop: '1px solid #2A2D3A' }}>
+                <button
+                  className="btn btn-sm"
+                  style={{ width: '100%', justifyContent: 'center', color: '#EF4444', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}
+                  onClick={handleClearHistory}
+                >
+                  <Trash2 size={13} /> Clear History
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
-        .new-chat-btn {
-          background: var(--accent-primary);
-          color: white;
-          border: none;
-          padding: 12px 20px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          cursor: pointer;
-          font-weight: 600;
-          transition: all 0.2s;
-        }
+      {/* Main Chat Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Top Bar */}
+        <div style={{
+          padding: '12px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: '1px solid #2A2D3A',
+          background: 'rgba(26,29,39,.95)', backdropFilter: 'blur(10px)',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Sidebar toggle */}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSidebarOpen(v => !v)}
+              style={{ padding: '6px 8px' }}
+            >
+              {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+            <div style={{ width: 34, height: 34, background: 'rgba(37,99,235,.15)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
+              <Bot size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Healthora AI</div>
+              <div style={{ fontSize: '0.7rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+                {loading ? 'Thinking…' : 'Online'}
+              </div>
+            </div>
+          </div>
 
-        .new-chat-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(58, 134, 255, 0.3);
-        }
-
-        .sessions-list {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          overflow-y: auto;
-        }
-
-        .session-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          border-radius: 10px;
-          cursor: pointer;
-          transition: all 0.2s;
-          font-size: 14px;
-          color: var(--text-secondary);
-          position: relative;
-        }
-
-        .session-item span {
-          flex: 1;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .delete-btn {
-          opacity: 0;
-          background: rgba(239, 68, 68, 0.1);
-          border: none;
-          color: #ef4444;
-          padding: 4px;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .session-item:hover .delete-btn {
-          opacity: 1;
-        }
-
-        .delete-btn:hover {
-          background: rgba(239, 68, 68, 0.2);
-        }
-
-        .session-item:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        .session-item.active {
-          background: rgba(58, 134, 255, 0.1);
-          color: var(--accent-primary);
-          border: 1px solid rgba(58, 134, 255, 0.3);
-        }
-
-        .chat-container {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          padding: 0;
-          overflow: hidden;
-        }
-
-        .chat-header {
-          padding: 20px 30px;
-          display: flex;
-          align-items: center;
-          gap: 15px;
-          border-bottom: 1px solid var(--border-color);
-          background: rgba(255, 255, 255, 0.02);
-        }
-
-        .typing-status {
-          font-size: 12px;
-          color: var(--text-secondary);
-        }
-
-        .messages-area {
-          flex: 1;
-          padding: 30px;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-
-        .message-wrapper {
-          display: flex;
-          gap: 15px;
-          max-width: 80%;
-        }
-
-        .message-wrapper.user {
-          align-self: flex-end;
-          flex-direction: row-reverse;
-        }
-
-        .msg-avatar {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: var(--surface-lighter);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          border: 1px solid var(--border-color);
-        }
-
-        .user .msg-avatar {
-          background: var(--accent-primary);
-        }
-
-        .message-bubble {
-          padding: 16px 20px;
-          border-radius: 20px;
-          background: var(--surface-lighter);
-          line-height: 1.6;
-          font-size: 15px;
-        }
-
-        .message-content {
-          line-height: 1.6;
-        }
-
-        .message-content strong {
-          font-weight: 700;
-          color: var(--accent-primary);
-        }
-
-        .user .message-bubble {
-          background: var(--accent-primary);
-          color: white;
-          border-bottom-right-radius: 4px;
-        }
-
-        .assistant .message-bubble {
-          border-bottom-left-radius: 4px;
-        }
-
-        .medical-bubble {
-          border: 1px solid rgba(58, 134, 255, 0.4);
-          background: rgba(58, 134, 255, 0.05);
-        }
-
-        .medical-tag {
-          font-size: 11px;
-          text-transform: uppercase;
-          font-weight: 700;
-          color: var(--accent-primary);
-          margin-bottom: 8px;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .chat-input-area {
-          padding: 24px 30px;
-          display: flex;
-          gap: 15px;
-          background: rgba(255, 255, 255, 0.01);
-          border-top: 1px solid var(--border-color);
-        }
-
-        .chat-input-area input {
-          flex: 1;
-          background: var(--surface-lighter);
-          border: 1px solid var(--border-color);
-          border-radius: 14px;
-          padding: 14px 20px;
-          color: white;
-          outline: none;
-        }
-
-        .typing-dots {
-          display: flex;
-          gap: 4px;
-          padding: 12px 20px;
-        }
-
-        .typing-dots span {
-          width: 6px;
-          height: 6px;
-          background: var(--text-secondary);
-          border-radius: 50%;
-          animation: bounce 1.4s infinite ease-in-out both;
-        }
-
-        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes bounce {
-          0%, 80%, 100% { transform: scale(0); }
-          40% { transform: scale(1); }
-        }
-      `}</style>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {!isLoggedIn() && (
+              <Link to="/register" style={{ fontSize: '0.78rem', color: '#9CA3AF' }}>Sign up to save chat</Link>
+            )}
+            <div className="lang-toggle">
+              <button className={language === 'english' ? 'active' : ''} onClick={() => language !== 'english' && toggleLanguage()}>EN</button>
+              <button className={language === 'telugu' ? 'active' : ''} onClick={() => language !== 'telugu' && toggleLanguage()}>తె</button>
+            </div>
+          </div>
         </div>
-    );
+
+        {/* Messages */}
+        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className="animate-in"
+              style={{
+                display: 'flex',
+                flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+                gap: 10, maxWidth: '80%',
+                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              }}
+            >
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                background: msg.role === 'user' ? '#2563EB' : '#1A1D27',
+                border: '1px solid #2A2D3A',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: msg.role === 'user' ? '#fff' : '#9CA3AF',
+              }}>
+                {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+              </div>
+              <div style={{
+                padding: '12px 16px',
+                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                background: msg.role === 'user' ? '#2563EB' : '#1A1D27',
+                borderLeft: msg.role === 'assistant' ? '3px solid #2563EB' : 'none',
+                color: msg.role === 'user' ? '#fff' : '#F8F9FA',
+                fontSize: '0.875rem', lineHeight: 1.65,
+              }}>
+                {msg.role === 'assistant' ? (
+                  <div className="markdown-content">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    {msg.isMedical && (
+                      <div style={{ marginTop: 8, fontSize: '0.7rem', color: '#6B7280', borderTop: '1px solid #2A2D3A', paddingTop: 6 }}>
+                        ⚕️ Medical Insight • Always consult a qualified doctor
+                      </div>
+                    )}
+                  </div>
+                ) : msg.content}
+              </div>
+            </div>
+          ))}
+
+          {loading && (
+            <div style={{ display: 'flex', gap: 10, alignSelf: 'flex-start' }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#1A1D27', border: '1px solid #2A2D3A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF' }}>
+                <Bot size={14} />
+              </div>
+              <div style={{ padding: '12px 16px', background: '#1A1D27', borderRadius: '16px 16px 16px 4px', borderLeft: '3px solid #2563EB' }}>
+                <div className="typing-dots"><span /><span /><span /></div>
+              </div>
+            </div>
+          )}
+
+          {/* 5-message nudge for guests */}
+          {!isLoggedIn() && msgCount === 5 && (
+            <div style={{ background: 'rgba(37,99,235,.08)', border: '1px solid rgba(37,99,235,.2)', borderRadius: 10, padding: '12px 16px', textAlign: 'center' }}>
+              <p style={{ color: '#F8F9FA', marginBottom: 8, fontWeight: 600, fontSize: '0.875rem' }}>
+                Sign up to save your conversation and get personalized insights
+              </p>
+              <Link to="/register" className="btn btn-primary btn-sm">Create free account</Link>
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <div style={{ padding: '12px 16px', borderTop: '1px solid #2A2D3A', background: 'rgba(26,29,39,.95)', flexShrink: 0 }}>
+          <form onSubmit={handleSend} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Fix 5: File upload button */}
+            <>
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept=".jpg,.jpeg,.png,.pdf"
+                onChange={handleFileUpload}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => fileInputRef.current?.click()}
+                title="Upload medical report"
+                disabled={loading}
+              >
+                <Paperclip size={15} />
+              </button>
+            </>
+            <input
+              className="form-input"
+              placeholder={language === 'telugu' ? 'ఆరోగ్య ప్రశ్న అడగండి...' : 'Ask a health question...'}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              disabled={loading}
+              style={{ flex: 1 }}
+            />
+            <button type="submit" className="btn btn-primary" disabled={!input.trim() || loading}>
+              <Send size={15} />
+            </button>
+          </form>
+          <div style={{ fontSize: '0.68rem', color: '#6B7280', textAlign: 'center', marginTop: 6 }}>
+            Healthora is for informational purposes only — not a substitute for medical advice
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default Chat;

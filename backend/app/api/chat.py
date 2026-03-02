@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -8,26 +9,222 @@ from app.db import crud, models
 from app.safety.filters import is_health_related
 from app.safety.disclaimers import medical_disclaimer
 from app.safety.output_guard import get_safety_guard, SafetyAction
-from app.services.llm_service import medical_llm_response
+from app.services.llm_service import get_health_response
+from app.utils.intent_detector import detect_language
 
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
+class ChatMessagePayload(BaseModel):
+    role: str
+    content: str
+
+class GuestChatRequest(BaseModel):
+    messages: list[ChatMessagePayload]
+    language: str = "english"
+    guest_session_id: str | None = None
+
 class ChatRequest(BaseModel):
     message: str
+    language: str = "english"
     session_id: str | None = None
 
 class ChatResponse(BaseModel):
     response: str
-    session_id: str
+    session_id: str | None = None
+    language: str = "english"
     is_medical: bool = False
-    history: list = []
-
+    is_guest: bool = False
+    
 class ChatSessionResponse(BaseModel):
     session_id: str
     title: str
     created_at: str
     updated_at: str
+
+@router.post("/guest", response_model=ChatResponse)
+async def chat_guest(req: GuestChatRequest):
+    """
+    Guest chat endpoint - no DB saving. We pass the whole history array.
+    """
+    # Quick health filter on the last message
+    if not req.messages:
+        raise HTTPException(status_code=400, detail="Empty messages.")
+
+    last_user_msg = req.messages[-1].content
+    if not is_health_related(last_user_msg):
+        raise HTTPException(
+            status_code=400,
+            detail="This assistant only answers health, diet, exercise, and wellness related questions."
+        )
+
+    # Convert to standard dict list
+    llm_messages = [{"role": m.role, "content": m.content} for m in req.messages]
+
+    detected_lang = detect_language(last_user_msg) if req.language == "english" else req.language
+
+    reply = await get_health_response(
+        messages=llm_messages, 
+        user_context=None, 
+        language=detected_lang
+    )
+
+    # Safety Validate
+    safety_guard = get_safety_guard()
+    safety_result = safety_guard.validate(text=reply, user_context=last_user_msg)
+
+    if safety_result["action"] == SafetyAction.EMERGENCY_REDIRECT:
+        final_response = safety_result["sanitized_text"]
+        is_medical = True
+    elif safety_result["action"] == SafetyAction.SANITIZE:
+        final_response = safety_result["sanitized_text"] + medical_disclaimer(detected_lang)
+        is_medical = False
+    else:
+        final_response = reply + medical_disclaimer(detected_lang)
+        is_medical = False
+
+    session_id = req.guest_session_id or str(uuid.uuid4())
+
+    return {
+        "response": final_response,
+        "session_id": session_id,
+        "language": detected_lang,
+        "is_medical": is_medical,
+        "is_guest": True
+    }
+
+
+@router.post("/", response_model=ChatResponse)
+async def chat_logged_in(req: ChatRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """
+    LoggedIn chat endpoint. Handles persistence and loads prior messages up to 20 for context.
+    """
+    if not req.session_id or req.session_id.lower() == "string":
+        session_id = str(uuid.uuid4())
+    else:
+        session_id = req.session_id
+
+    crud.get_or_create_chat_session(db, session_id, current_user.id)
+
+    if not req.message or not req.message.strip():
+        return {
+            "response": "Empty message",
+            "session_id": session_id,
+        }
+
+    if not is_health_related(req.message):
+        raise HTTPException(
+            status_code=400,
+            detail="This assistant only answers health, diet, exercise, and wellness related questions."
+        )
+
+    crud.save_message(db, session_id, current_user.id, "user", req.message)
+    detected_lang = detect_language(req.message) if req.language == "english" else req.language
+
+    # Fetch last 20 messages for history
+    history = crud.get_recent_messages(db, session_id, limit=20)
+    llm_messages = [{"role": msg.role, "content": msg.content} for msg in history]
+
+    # Load context
+    lab_summary = crud.get_latest_lab_summary(db, current_user.id)
+    profile = crud.get_health_profile(db, current_user.id)
+
+    user_context = {}
+    if profile:
+        user_context["Age/Gender"] = f"{profile.age}yo {profile.gender}"
+        if profile.blood_type:
+            user_context["Blood_Type"] = profile.blood_type
+        if profile.known_conditions:
+            user_context["Conditions"] = profile.known_conditions
+    if lab_summary:
+        user_context["Latest_Labs"] = lab_summary
+
+    reply = await get_health_response(
+        messages=llm_messages,
+        user_context=user_context,
+        language=detected_lang
+    )
+
+    safety_guard = get_safety_guard()
+    safety_result = safety_guard.validate(text=reply, user_context=req.message)
+
+    is_medical = False
+    if safety_result["action"] == SafetyAction.EMERGENCY_REDIRECT:
+        final_response = safety_result["sanitized_text"]
+        is_medical = True
+    elif safety_result["action"] == SafetyAction.SANITIZE:
+        final_response = safety_result["sanitized_text"] + medical_disclaimer(detected_lang)
+    else:
+        final_response = reply + medical_disclaimer(detected_lang)
+
+    crud.save_message(db, session_id, current_user.id, "assistant", final_response)
+
+    return {
+        "response": final_response,
+        "session_id": session_id,
+        "language": detected_lang,
+        "is_medical": is_medical
+    }
+
+
+@router.get("/history")
+async def get_chat_history(session_id: str | None = None, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """
+    Get chat messages. If session_id provided, returns that session's messages (decrypted).
+    Otherwise returns all sessions with previews (decrypted).
+    """
+    if session_id:
+        # Single session — use crud which decrypts
+        messages = crud.get_recent_messages(db, session_id, limit=100)
+        return {
+            "session_id": session_id,
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": m.content,  # Already decrypted by crud
+                    "created_at": m.created_at.isoformat() if m.created_at else None
+                }
+                for m in messages
+            ]
+        }
+    
+    # All sessions — decrypt each, return structured
+    sessions = crud.get_user_chat_sessions(db, current_user.id)
+    result = []
+    for session in sessions:
+        messages = crud.get_recent_messages(db, session.session_id, limit=100)
+        result.append({
+            "session_id": session.session_id,
+            "title": session.title or "Chat Session",
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": m.content,  # Already decrypted by crud
+                    "created_at": m.created_at.isoformat() if m.created_at else None
+                }
+                for m in messages
+            ],
+            "preview": messages[0].content[:40] if messages else "New Chat"
+        })
+    return {"sessions": result}
+
+
+
+
+@router.delete("/history")
+async def clear_chat_history(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """
+    Clears all chat history for the user.
+    """
+    from app.db.models_chat import ChatSession, ChatMessage
+    db.query(ChatMessage).filter(ChatMessage.user_id == current_user.id).delete()
+    db.query(ChatSession).filter(ChatSession.user_id == current_user.id).delete()
+    db.commit()
+
+    return {"message": "Chat history cleared"}
+
 
 @router.get("/sessions", response_model=list[ChatSessionResponse])
 async def get_chat_sessions(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -45,12 +242,10 @@ async def get_chat_sessions(db: Session = Depends(get_db), current_user: models.
 @router.delete("/sessions/{session_id}")
 async def delete_chat_session(session_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     from app.db.models_chat import ChatSession, ChatMessage
-    
     session = db.query(ChatSession).filter(
         ChatSession.session_id == session_id,
         ChatSession.user_id == current_user.id
     ).first()
-    
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -59,115 +254,3 @@ async def delete_chat_session(session_id: str, db: Session = Depends(get_db), cu
     db.commit()
     
     return {"message": "Session deleted"}
-
-@router.post("/", response_model=ChatResponse)
-async def chat(req: ChatRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if not req.session_id or req.session_id.lower() == "string":
-        session_id = str(uuid.uuid4())
-    else:
-        session_id = req.session_id
-
-    # Create or get session
-    crud.get_or_create_chat_session(db, session_id, current_user.id)
-
-    # If empty message, just return history
-    if not req.message or not req.message.strip():
-        history = crud.get_recent_messages(db, session_id, limit=50)
-        return {
-            "response": "",
-            "session_id": session_id,
-            "is_medical": False,
-            "history": [{"role": msg.role, "content": msg.content} for msg in history]
-        }
-
-    if not is_health_related(req.message):
-        raise HTTPException(
-            status_code=400,
-            detail="This assistant only answers health, diet, exercise, and wellness related questions."
-        )
-
-    # Save user message
-    crud.save_message(db, session_id, current_user.id, "user", req.message)
-
-    is_medical = False
-    reply = ""
-
-    # Decide routing - Use general chat for all health questions
-    # Get conversation history
-    history = crud.get_recent_messages(db, session_id)
-    llm_messages = [
-        {"role": msg.role, "content": msg.content}
-        for msg in history
-    ]
-    
-    # Check if user wants to generate final plan
-    plan_keywords = ["generate", "create", "make", "ready", "final plan", "show me the plan"]
-    if any(keyword in req.message.lower() for keyword in plan_keywords):
-        # Check if this is a consultation session
-        first_msg = history[0] if history else None
-        if first_msg and first_msg.role == "assistant" and ("nutrition" in first_msg.content.lower() or "fitness" in first_msg.content.lower()):
-            # Generate final plan
-            from app.services.lifestyle_service import generate_final_plan
-            
-            plan_type = "nutrition" if "nutrition" in first_msg.content.lower() or "meal" in first_msg.content.lower() else "fitness"
-            conversation = "\n".join([f"{msg.role}: {msg.content}" for msg in history])
-            
-            reply = await generate_final_plan(profile, plan_type, conversation, lab_summary)
-            crud.save_message(db, session_id, current_user.id, "assistant", reply)
-            
-            return {
-                "response": reply,
-                "session_id": session_id,
-                "is_medical": False
-            }
-    
-    # Inject lab context and profile
-    lab_summary = crud.get_latest_lab_summary(db, current_user.id)
-    profile = crud.get_health_profile(db, current_user.id)
-    
-    context_parts = []
-    if profile:
-        context_parts.append(f"Patient: {profile.age}yo {profile.gender}")
-        if profile.blood_type:
-            context_parts.append(f"Blood Type: {profile.blood_type}")
-        if profile.known_conditions:
-            context_parts.append(f"Conditions: {profile.known_conditions}")
-    
-    if lab_summary:
-        context_parts.append(lab_summary)
-    
-    if context_parts:
-        system_context = "You are a helpful healthcare assistant.\n\n" + "\n".join(context_parts)
-        llm_messages.insert(0, {"role": "system", "content": system_context})
-    
-    # Get response from Groq
-    reply = await medical_llm_response(llm_messages)
-    
-    # ===== SAFETY VALIDATION =====
-    safety_guard = get_safety_guard()
-    safety_result = safety_guard.validate(
-        text=reply,
-        user_context=req.message
-    )
-    
-    # Handle safety actions
-    if safety_result["action"] == SafetyAction.EMERGENCY_REDIRECT:
-        final_response = safety_result["sanitized_text"]
-        is_medical = True
-    elif safety_result["action"] == SafetyAction.SANITIZE:
-        final_response = safety_result["sanitized_text"] + medical_disclaimer()
-    else:
-        final_response = reply + medical_disclaimer()
-    
-    # Log safety flags if any
-    if safety_result["flags"]:
-        print(f"Safety flags triggered: {safety_result['flags']}")
-    
-    # Save assistant reply
-    crud.save_message(db, session_id, current_user.id, "assistant", final_response)
-
-    return {
-        "response": final_response,
-        "session_id": session_id,
-        "is_medical": is_medical
-    }

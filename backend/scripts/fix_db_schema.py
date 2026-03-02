@@ -7,15 +7,35 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
 
 from app.db.database import engine
 
-def add_column():
-    print("Attempting to add 'medical_analysis_json' column to 'report_extracts' table...")
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE report_extracts ADD COLUMN medical_analysis_json TEXT;"))
-            conn.commit()
-        print("✅ Successfully added column.")
-    except Exception as e:
-        print(f"❌ Failed (column might already exist or other error): {e}")
+def migrate():
+    print("🚀 Starting Phase 0 Database Migration...")
+    
+    # List of tables and columns to add
+    migrations = [
+        # Table, Column, Type
+        ("report_extracts", "medical_analysis_json", "TEXT"),
+        ("users", "is_verified", "BOOLEAN DEFAULT FALSE"),
+        ("users", "is_active", "BOOLEAN DEFAULT TRUE"),
+        ("users", "full_name", "VARCHAR"),
+        ("users", "otp_code", "VARCHAR"),
+        ("users", "otp_expires_at", "TIMESTAMP"),
+        ("users", "refresh_token", "VARCHAR")
+    ]
+
+    with engine.connect() as conn:
+        for table, column, col_type in migrations:
+            print(f"Checking column '{column}' in table '{table}'...")
+            try:
+                # PostgreSQL specific: ADD COLUMN IF NOT EXISTS
+                query = text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type};")
+                conn.execute(query)
+                conn.commit()
+                print(f"  ✅ Column '{column}' processed.")
+            except Exception as e:
+                print(f"  ❌ Failed to process '{column}': {e}")
+                conn.rollback()
+
+    print("\n✅ Migration check complete.")
 
 if __name__ == "__main__":
-    add_column()
+    migrate()

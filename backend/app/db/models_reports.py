@@ -9,6 +9,8 @@ class Report(Base):
     user_id = Column(Integer, nullable=True)  # keep nullable for now
     filename = Column(String, nullable=False)
     file_type = Column(String)  # pdf | image
+    s3_key = Column(String, nullable=True)  # S3 object key for file storage
+    report_type = Column(String, nullable=True)  # blood_test, xray, prescription etc
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class ReportExtract(Base):

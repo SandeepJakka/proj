@@ -1,190 +1,84 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api from '../services/api';
-import { Lock, Mail, Activity, Loader } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import toast, { Toaster } from 'react-hot-toast';
+import { loginUser } from '../services/api';
+import { Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
-  const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [forgotMode, setForgotMode] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    if (!email || !password) { toast.error('Fill in all fields'); return; }
     setLoading(true);
-    setError('');
-
     try {
-      if (isRegister) {
-        const res = await api.post('/auth/register', { email, password });
-        localStorage.setItem('token', res.data.access_token);
-      } else {
-        const formData = new FormData();
-        formData.append('username', email);
-        formData.append('password', password);
-        const res = await api.post('/auth/login', formData);
-        localStorage.setItem('token', res.data.access_token);
-      }
-      navigate('/');
-      window.location.reload(); // Refresh to update axios headers
+      const res = await loginUser(email, password);
+      localStorage.setItem('access_token', res.data.access_token);
+      localStorage.setItem('refresh_token', res.data.refresh_token);
+      navigate('/dashboard');
     } catch (err) {
-      let errorMsg = 'Authentication failed';
-      if (err.response?.data?.detail) {
-        if (typeof err.response.data.detail === 'string') {
-          errorMsg = err.response.data.detail;
-        } else if (Array.isArray(err.response.data.detail)) {
-          errorMsg = err.response.data.detail[0]?.msg || JSON.stringify(err.response.data.detail);
-        }
-      }
-      setError(errorMsg);
+      toast.error(err.response?.data?.detail || 'Login failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card glass-panel animate-fade-in">
-        <div className="login-header">
-          <div className="logo-icon">H</div>
-          <h1>Healthora Intelligence</h1>
-          <p>{isRegister ? 'Create your medical identity' : 'Access your health dashboard'}</p>
+    <div style={{ minHeight: '100vh', background: '#0F1117', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <Toaster position="top-center" toastOptions={{ className: 'toast-dark' }} />
+
+      <div style={{ width: '100%', maxWidth: 400 }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{ width: 52, height: 52, background: '#2563EB', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 26, fontWeight: 800, color: '#fff' }}>H</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>Healthora</div>
         </div>
 
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="input-field">
-            <Mail size={18} />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="input-field">
-            <Lock size={18} />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+        <div className="card" style={{ padding: 32 }}>
+          <h2 style={{ marginBottom: 6, textAlign: 'center' }}>Welcome back</h2>
+          <p style={{ textAlign: 'center', marginBottom: 28, fontSize: '0.875rem' }}>Sign in to your account</p>
 
-          {error && <div className="error-msg">{error}</div>}
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="form-group">
+              <label className="form-label">Email address</label>
+              <input className="form-input" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <div style={{ position: 'relative' }}>
+                <input className="form-input" type={showPw ? 'text' : 'password'} autoComplete="current-password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required style={{ paddingRight: 44 }} />
+                <button type="button" onClick={() => setShowPw(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer' }}>
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
 
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? <Loader className="spin" size={18} /> : (isRegister ? 'Register' : 'Login')}
-          </button>
-        </form>
+            <div style={{ textAlign: 'right' }}>
+              <Link to="/forgot-password" style={{ fontSize: '0.8rem', color: '#2563EB' }}>Forgot password?</Link>
+            </div>
 
-        <div className="login-footer">
-          <button onClick={() => setIsRegister(!isRegister)} className="btn-text">
-            {isRegister ? 'Already have an account? Login' : "Don't have an account? Register"}
-          </button>
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+          </form>
+
+          <div className="divider" style={{ margin: '20px 0' }}>or</div>
+
+          <Link to="/chat" className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '12px', display: 'flex' }}>
+            Continue as Guest
+          </Link>
+
+          <p style={{ textAlign: 'center', marginTop: 24, fontSize: '0.85rem', color: '#9CA3AF' }}>
+            Don't have an account?{' '}
+            <Link to="/register" style={{ color: '#2563EB', fontWeight: 600 }}>Sign up</Link>
+          </p>
         </div>
       </div>
-
-      <style jsx>{`
-        .login-page {
-          height: 100vh;
-          width: 100vw;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg-color);
-          position: fixed;
-          top: 0;
-          left: 0;
-          z-index: 2000;
-        }
-
-        .login-card {
-          width: 100%;
-          max-width: 400px;
-          padding: 40px;
-          display: flex;
-          flex-direction: column;
-          gap: 30px;
-        }
-
-        .login-header {
-          text-align: center;
-        }
-
-        .logo-icon {
-          width: 48px;
-          height: 48px;
-          background: var(--accent-primary);
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 800;
-          color: white;
-          font-size: 24px;
-          margin: 0 auto 20px;
-        }
-
-        .login-header h1 {
-          font-size: 24px;
-          margin-bottom: 8px;
-        }
-
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .input-field {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 14px 18px;
-          background: var(--surface-lighter);
-          border: 1px solid var(--border-color);
-          border-radius: 14px;
-          color: var(--text-secondary);
-        }
-
-        .input-field input {
-          background: transparent;
-          border: none;
-          color: white;
-          width: 100%;
-          outline: none;
-        }
-
-        .error-msg {
-          color: var(--accent-secondary);
-          font-size: 14px;
-          text-align: center;
-        }
-
-        .login-footer {
-          text-align: center;
-        }
-
-        .btn-text {
-          color: var(--accent-primary);
-          background: transparent;
-          font-size: 14px;
-        }
-
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 };

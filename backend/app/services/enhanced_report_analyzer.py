@@ -16,7 +16,7 @@ import json
 from app.services.lab_parser import LabValueParser
 from app.services.reference_ranges import ReferenceRangeEngine, LabStatus
 from app.services.ner_service import extract_entities
-from app.services.local_llm import LocalMedicalLLM
+# Removed local_llm import — AI narrative now skipped (Groq used in report explain endpoint)
 
 
 class EnhancedReportAnalyzer:
@@ -32,7 +32,7 @@ class EnhancedReportAnalyzer:
         self.lab_parser = LabValueParser()
         self.ref_engine = ReferenceRangeEngine()
         self.ner = extract_entities
-        self.llm = None  # Lazy load
+        # Note: local LLM removed — AI narrative uses Groq at the API layer
     
     def analyze_report(self,
                       raw_text: str,
@@ -126,43 +126,20 @@ class EnhancedReportAnalyzer:
         return "\n".join(lines)
     
     def _generate_ai_narrative(self, lab_values, evaluations, entities, raw_text) -> str:
-        """Generate narrative using local LLM for context and explanation"""
-        
-        # Only use LLM if we have structured data to validate against
+        """
+        AI narrative generation placeholder.
+        Local LLM has been removed. Groq-based narrative is generated
+        at the API layer (reports.py /explain endpoint).
+        """
         if not lab_values:
             return "Insufficient structured data for AI narrative."
-        
-        # Lazy load LLM
-        if self.llm is None:
-            try:
-                self.llm = LocalMedicalLLM.get_instance()
-            except Exception as e:
-                return f"AI narrative unavailable: {str(e)}"
-        
-        # Prepare structured context
-        structured_findings = []
-        for eval in evaluations:
-            structured_findings.append(
-                f"{eval.test_name}: {eval.value} {eval.unit} - {eval.status.value}"
-            )
-        
-        system_prompt = (
-            "You are a medical data interpreter. Given structured lab results, "
-            "provide a concise, patient-friendly explanation. Focus on what the results mean "
-            "and general health context. Do NOT diagnose. Do NOT prescribe."
-        )
-        
-        user_prompt = (
-            f"Lab Results:\n" +
-            "\n".join(structured_findings) +
-            "\n\nProvide a brief, educational explanation of these results."
-        )
-        
-        try:
-            narrative = self.llm.generate_raw(system_prompt, user_prompt, max_tokens=400)
-            return narrative.strip()
-        except Exception as e:
-            return f"AI narrative generation failed: {str(e)}"
+
+        # Build a simple deterministic summary as fallback narrative
+        structured_findings = [
+            f"{ev.test_name}: {ev.value} {ev.unit} - {ev.status.value}"
+            for ev in evaluations
+        ]
+        return "Lab findings: " + "; ".join(structured_findings)
     
     def save_lab_values_to_db(self,
                              db: Session,

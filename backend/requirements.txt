@@ -1,9 +1,51 @@
-llama-cpp-python
-huggingface_hub
+# ==============================================================================
+# Healthora Backend — Python Dependencies
+# Phase 0: Cleanup, Security Hardening, Foundation Fixes
+# ==============================================================================
+
+# ── Web framework ──────────────────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+python-multipart          # Required for UploadFile / form data
+
+# ── Database ───────────────────────────────────────────────────────────────────
+sqlalchemy
+psycopg2-binary           # PostgreSQL adapter
+python-dotenv             # Load .env file
+
+# ── Auth / Security ────────────────────────────────────────────────────────────
+bcrypt
+passlib[bcrypt]           # Password hashing (bcrypt backend)
+python-jose[cryptography] # JWT encoding/decoding
+slowapi                   # Rate limiting for FastAPI
+
+# ── Email ──────────────────────────────────────────────────────────────────────
+# Email is sent via Gmail SMTP using Python built-ins (smtplib, ssl, email.mime)
+# No third-party email package required.
+
+# ── File validation ────────────────────────────────────────────────────────────
+python-magic              # MIME type detection via libmagic
+
+# ── Data validation ────────────────────────────────────────────────────────────
+pydantic[email]           # Pydantic with email validator
+
+# ── AI / LLM APIs ──────────────────────────────────────────────────────────────
+groq                      # Groq API client (replaces local LLM)
+google-genai              # Gemini API (new SDK)
+huggingface_hub           # HuggingFace model hub
+
+# ── Medical / NLP ──────────────────────────────────────────────────────────────
 spacy
 scispacy
-pdfplumber
-pytesseract
-python-multipart
+pdfplumber                # PDF text extraction
+pytesseract               # OCR support
+PyMuPDF                   # PDF parsing and image extraction
+Pillow                    # Image resizing and manipulation
+langdetect                # Language detection between English/Telugu
+cryptography              # Encryption via Fernet
+paddleocr                 # Fallback vision OCR
 https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
-google-generativeai
+
+# ── AWS & Scheduling ───────────────────────────────────────────────────────────
+boto3                     # AWS S3 client
+apscheduler               # Task scheduling for reminders
