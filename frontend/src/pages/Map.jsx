@@ -285,7 +285,7 @@ out center;`;
         <div style={{ minHeight: '100vh', background: '#0F1117' }}>
             <Toaster position="top-right" toastOptions={{ className: 'toast-dark' }} />
 
-            <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 20px' }}>
+            <div className="page-enter" style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 20px' }}>
                 <div className="page-header">
                     <h1>Find Nearby Healthcare</h1>
                     <p>Hospitals, clinics, pharmacies, labs near you</p>
@@ -452,7 +452,7 @@ out center;`;
                             const km = distKm(p.lat, p.lon);
                             const color = getColor(p);
                             return (
-                                <div key={p.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px' }}>
+                                <div key={p.id} className="card stagger-item card-hover" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px' }}>
                                     <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: `${color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
                                         <MapPin size={18} />
                                     </div>
@@ -493,11 +493,12 @@ out center;`;
 
                 {/* Empty state - no center yet */}
                 {!loading && !center && !locationError && (
-                    <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-                        <MapPin size={36} color="#2563EB" style={{ marginBottom: 12 }} />
-                        <p style={{ marginBottom: 16 }}>
-                            Allow location access to find healthcare near you,
-                            or search your city above.
+                    <div className="empty-state animate-in">
+                        <div className="empty-state-icon">📍</div>
+                        <h3>Find Nearby Healthcare</h3>
+                        <p style={{ marginBottom: 20 }}>
+                            Allow location access to find hospitals, clinics, and pharmacies near you,
+                            or search your city manually.
                         </p>
                         <button className="btn btn-primary" onClick={getLocation}>
                             📍 Use My Location
@@ -507,13 +508,14 @@ out center;`;
 
                 {/* Empty state - no results */}
                 {!loading && filtered.length === 0 && center && (
-                    <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-                        <MapPin size={36} color="#6B7280" style={{ marginBottom: 12 }} />
+                    <div className="empty-state animate-in">
+                        <div className="empty-state-icon">🗺️</div>
+                        <h3>No Results Found</h3>
                         <p style={{ marginBottom: 8 }}>
-                            No {filter === 'all' ? 'healthcare places' : filter} found within 5km on OpenStreetMap.
+                            No {filter === 'all' ? 'healthcare places' : filter} found within 7km on OpenStreetMap.
                         </p>
-                        <p style={{ color: '#9CA3AF', fontSize: '0.8rem', marginBottom: 16 }}>
-                            OpenStreetMap coverage may be limited in your area. Try Google Maps for more results.
+                        <p style={{ color: '#9CA3AF', fontSize: '0.85rem', marginBottom: 20 }}>
+                            OSM coverage might be limited. Try searching on Google Maps for better results.
                         </p>
                         <a
                             href={`https://www.google.com/maps/search/${encodeURIComponent(
@@ -524,9 +526,8 @@ out center;`;
                             )}/@${center[0]},${center[1]},14z`}
                             target="_blank" rel="noopener noreferrer"
                             className="btn btn-primary"
-                            style={{ background: '#4285F4', border: 'none' }}
                         >
-                            🗺 Search on Google Maps
+                            Open Google Maps
                         </a>
                     </div>
                 )}

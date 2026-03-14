@@ -55,6 +55,7 @@ def save_message(db: Session, session_id: str, user_id: int, role: str, content:
     )
     db.add(msg)
     db.commit()
+    db.refresh(msg)
     
     # Update session timestamp
     session = db.query(ChatSession).filter(ChatSession.session_id == session_id).first()

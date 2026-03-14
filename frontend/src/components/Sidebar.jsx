@@ -2,23 +2,27 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, MessageSquare, ScanLine,
-  MapPin, Lightbulb, Activity, UserCircle, LogOut, Bell
+  MapPin, Lightbulb, Activity, UserCircle, LogOut, Bell, X
 } from 'lucide-react';
+import { useT } from '../context/LanguageContext';
 
-const NAV = [
-  { label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={18} /> },
-  { label: 'Reports', path: '/reports', icon: <FileText size={18} /> },
-  { label: 'Analyze', path: '/analyze', icon: <ScanLine size={18} /> },
-  { label: 'Chat AI', path: '/chat', icon: <MessageSquare size={18} /> },
-  { label: 'Find Doctors', path: '/map', icon: <MapPin size={18} /> },
-  { label: 'Health Tips', path: '/tips', icon: <Lightbulb size={18} /> },
-  { label: 'Reminders', path: '/reminders', icon: <Bell size={18} /> },
-  { label: 'Lifestyle', path: '/lifestyle', icon: <Activity size={18} /> },
-  { label: 'Profile', path: '/profile', icon: <UserCircle size={18} /> },
-];
+
 
 const Sidebar = ({ open, onClose }) => {
+  const t = useT();
   const navigate = useNavigate();
+
+  const NAV = [
+    { label: t('nav_home'), path: '/dashboard', icon: <LayoutDashboard size={18} /> },
+    { label: t('nav_reports'), path: '/reports', icon: <FileText size={18} /> },
+    { label: t('nav_analyze'), path: '/analyze', icon: <ScanLine size={18} /> },
+    { label: t('nav_chat'), path: '/chat', icon: <MessageSquare size={18} /> },
+    { label: t('nav_map'), path: '/map', icon: <MapPin size={18} /> },
+    { label: t('nav_tips'), path: '/tips', icon: <Lightbulb size={18} /> },
+    { label: t('nav_reminders'), path: '/reminders', icon: <Bell size={18} /> },
+    { label: t('nav_lifestyle'), path: '/lifestyle', icon: <Activity size={18} /> },
+    { label: t('nav_profile'), path: '/profile', icon: <UserCircle size={18} /> },
+  ];
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -29,9 +33,26 @@ const Sidebar = ({ open, onClose }) => {
 
   return (
     <aside className={`sidebar${open ? ' open' : ''}`}>
+      {/* Logo row with close button on mobile */}
       <div className="sidebar-logo">
-        <div className="logo-icon">H</div>
-        <span className="logo-text">Healthora</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="logo-icon">H</div>
+          <span className="logo-text">Healthora</span>
+        </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none', border: 'none',
+            color: '#9CA3AF', cursor: 'pointer',
+            padding: 4, borderRadius: 6,
+            display: 'none'
+          }}
+          className="sidebar-close-btn"
+          aria-label="Close sidebar"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       <nav className="sidebar-nav">
@@ -39,7 +60,9 @@ const Sidebar = ({ open, onClose }) => {
           <NavLink
             key={item.path}
             to={item.path}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+            className={({ isActive }) =>
+              `nav-item${isActive ? ' active' : ''}`
+            }
             onClick={onClose}
           >
             {item.icon}
@@ -51,9 +74,19 @@ const Sidebar = ({ open, onClose }) => {
       <div className="sidebar-footer">
         <button className="nav-item" onClick={handleLogout}>
           <LogOut size={18} />
-          <span>Logout</span>
+          <span>{t('nav_logout')}</span>
         </button>
       </div>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .sidebar-close-btn {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+          }
+        }
+      `}</style>
     </aside>
   );
 };

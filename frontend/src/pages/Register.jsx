@@ -64,7 +64,8 @@ const Register = () => {
             localStorage.setItem('access_token', res.data.access_token);
             localStorage.setItem('refresh_token', res.data.refresh_token);
             toast.success('Email verified successfully!');
-            navigate('/dashboard');
+            localStorage.setItem('healthora_new_user', 'true');
+            navigate('/onboarding');
         } catch (err) {
             toast.error(err.response?.data?.detail || 'Invalid or expired OTP');
         } finally {

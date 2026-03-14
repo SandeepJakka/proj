@@ -87,7 +87,7 @@ const Analyze = () => {
                 </div>
             </nav>
 
-            <div style={{ maxWidth: 760, margin: '0 auto', padding: '40px 24px' }}>
+            <div className="page-enter" style={{ maxWidth: 760, margin: '0 auto', padding: '40px 24px' }}>
                 <div className="page-header">
                     <h1>Analyze Your Medical Report</h1>
                     <p>Upload your report and get a simple explanation in seconds</p>
@@ -100,8 +100,9 @@ const Analyze = () => {
                         marginBottom: 24,
                         border: dragging ? '2px dashed #2563EB' : '2px dashed #2A2D3A',
                         cursor: 'pointer', textAlign: 'center', padding: '40px',
-                        transition: 'all .2s',
+                        transition: 'all .3s cubic-bezier(0.4, 0, 0.2, 1)',
                         background: dragging ? 'rgba(37,99,235,.05)' : '#1A1D27',
+                        transform: dragging ? 'scale(1.02)' : 'scale(1)',
                     }}
                     onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                     onDragLeave={() => setDragging(false)}
@@ -161,9 +162,10 @@ const Analyze = () => {
 
                 {/* Loading */}
                 {loading && (
-                    <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-                        <div className="typing-dots" style={{ justifyContent: 'center', marginBottom: 16 }}>
-                            <span /><span /><span />
+                    <div className="card animate-in" style={{ textAlign: 'center', padding: 40 }}>
+                        <div className="skeleton-card" style={{ marginBottom: 20 }}>
+                            <div className="skeleton skeleton-title" style={{ width: '60%', margin: '0 auto 12px' }} />
+                            <div className="skeleton skeleton-text" style={{ width: '80%', margin: '0 auto' }} />
                         </div>
                         <p style={{ color: '#9CA3AF' }}>{progress}</p>
                     </div>
@@ -171,9 +173,9 @@ const Analyze = () => {
 
                 {/* Results */}
                 {result && !loading && (
-                    <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {/* Doc type */}
-                        <div className="card">
+                        <div className="card stagger-item">
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                     <FileText size={20} color="#2563EB" />
@@ -187,7 +189,7 @@ const Analyze = () => {
 
                         {/* Critical alerts */}
                         {result.critical_alerts?.length > 0 && (
-                            <div style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, padding: '16px 20px' }}>
+                            <div className="stagger-item" style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, padding: '16px 20px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: '#EF4444', fontWeight: 700 }}>
                                     <AlertTriangle size={18} /> Critical Alerts
                                 </div>
@@ -199,7 +201,7 @@ const Analyze = () => {
 
                         {/* Explanation */}
                         {result.explanation && (
-                            <div className="card">
+                            <div className="card stagger-item">
                                 <h3 style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <CheckCircle size={18} color="#10B981" /> Full Explanation
                                 </h3>
@@ -211,7 +213,7 @@ const Analyze = () => {
 
                         {/* Parameters table */}
                         {result.gemini_extraction?.structured_data?.parameters?.length > 0 && (
-                            <div className="card" style={{ overflowX: 'auto' }}>
+                            <div className="card stagger-item" style={{ overflowX: 'auto' }}>
                                 <h3 style={{ marginBottom: 16 }}>Test Results</h3>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                                     <thead>

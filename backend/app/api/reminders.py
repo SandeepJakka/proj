@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -114,3 +114,41 @@ def delete_reminder(
     db.delete(reminder)
     db.commit()
     return {"message": "Reminder deleted"}
+
+
+@router.post("/scan-prescription")
+async def scan_prescription(
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Accept prescription image.
+    Use Groq vision to extract medicines.
+    Returns list of detected medicines for frontend wizard.
+    """
+    from app.services.vision_service import analyze_prescription_image
+    from app.utils.file_handler import validate_upload_file
+
+    # Validate file
+    file_bytes = await validate_upload_file(file)
+
+    # Analyze with vision AI
+    result = await analyze_prescription_image(file_bytes, file.filename)
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=422,
+            detail=result.get(
+                "error",
+                "Could not read prescription. Please upload a clear image."
+            )
+        )
+
+    return {
+        "medicines": result.get("medicines", []),
+        "raw_text": result.get("raw_text", ""),
+        "prescription_date": result.get("date"),
+        "doctor_name": result.get("doctor_name"),
+        "count": len(result.get("medicines", []))
+    }

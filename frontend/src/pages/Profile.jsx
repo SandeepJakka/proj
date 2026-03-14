@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { getProfile, updateProfile, getProfileSharing, updateProfileSharing } from '../services/api';
+import { getProfile, updateProfile, getProfileSharing, updateProfileSharing, getCurrentUser } from '../services/api';
 import { User, ShieldCheck, Activity, Save, Loader, Link2, Copy, Eye, EyeOff } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 const SHAREABLE_FIELDS = [
-  { key: 'full_name', label: 'Full Name' },
-  { key: 'age', label: 'Age' },
-  { key: 'gender', label: 'Gender' },
-  { key: 'blood_type', label: 'Blood Type' },
-  { key: 'known_conditions', label: 'Known Conditions' },
-  { key: 'allergies', label: 'Allergies' },
-  { key: 'activity_level', label: 'Activity Level' },
+    { key: 'full_name', label: 'Full Name' },
+    { key: 'age', label: 'Age' },
+    { key: 'gender', label: 'Gender' },
+    { key: 'blood_type', label: 'Blood Type' },
+    { key: 'known_conditions', label: 'Known Conditions' },
+    { key: 'allergies', label: 'Allergies' },
+    { key: 'activity_level', label: 'Activity Level' },
+    { key: 'health_summary', label: 'Health Summary', desc: 'BMI and conditions overview' },
+    { key: 'reports', label: 'Recent Reports', desc: 'Last 5 reports, summaries only' },
 ];
 
 const Profile = () => {
@@ -34,6 +36,7 @@ const Profile = () => {
     });
     const [sharingLoaded, setSharingLoaded] = useState(false);
     const [savingSharing, setSavingSharing] = useState(false);
+    const [userEmail, setUserEmail] = useState('');
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -48,6 +51,10 @@ const Profile = () => {
         };
         fetchProfile();
 
+        getCurrentUser()
+            .then(r => setUserEmail(r.data?.email || ''))
+            .catch(() => { });
+
         getProfileSharing()
             .then(r => {
                 if (r.data) {
@@ -58,7 +65,7 @@ const Profile = () => {
                     });
                 }
             })
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setSharingLoaded(true));
     }, []);
 
@@ -96,10 +103,21 @@ const Profile = () => {
         }
     };
 
-    if (loading) return <div className="loading">Loading profile core...</div>;
+    if (loading) return (
+        <div className="profile-page page-enter">
+            <header className="page-header">
+                <div className="skeleton skeleton-title" style={{ width: 200, height: 40, marginBottom: 12 }} />
+                <div className="skeleton skeleton-text" style={{ width: 400 }} />
+            </header>
+            <div className="profile-container">
+                <div className="skeleton-card" style={{ height: 400, marginBottom: 24 }} />
+                <div className="skeleton-card" style={{ height: 300 }} />
+            </div>
+        </div>
+    );
 
     return (
-        <div className="profile-page">
+        <div className="profile-page page-enter">
             <Toaster position="top-right" />
             <header className="page-header">
                 <h1>Health Identity</h1>
@@ -107,13 +125,42 @@ const Profile = () => {
             </header>
 
             <div className="profile-container">
-                <form className="profile-form animate-fade-in" onSubmit={handleSave}>
-                    <div className="form-section card">
+                <form className="profile-form" style={{ animation: 'none' }} onSubmit={handleSave}>
+                    <div className="form-section card stagger-item">
                         <div className="section-title">
                             <User size={20} color="var(--accent-primary)" />
                             <h2>Personal Information</h2>
                         </div>
                         <div className="form-grid">
+                            <div className="input-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Email Address</label>
+                                <div style={{
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid #2A2D3A',
+                                    borderRadius: 12,
+                                    padding: '12px 16px',
+                                    color: '#9CA3AF',
+                                    fontSize: '0.9rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <span>{userEmail || 'Loading...'}</span>
+                                    <span style={{
+                                        background: 'rgba(16,185,129,0.1)',
+                                        color: '#10B981',
+                                        fontSize: '0.7rem',
+                                        padding: '2px 8px',
+                                        borderRadius: 20,
+                                        fontWeight: 600
+                                    }}>
+                                        ✓ Verified
+                                    </span>
+                                </div>
+                                <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>
+                                    Email cannot be changed
+                                </span>
+                            </div>
                             <div className="input-field">
                                 <label>Age</label>
                                 <input type="number" name="age" value={profile.age || ''} onChange={handleChange} />
@@ -152,7 +199,7 @@ const Profile = () => {
                         </div>
                     </div>
 
-                    <div className="form-section card">
+                    <div className="form-section card stagger-item">
                         <div className="section-title">
                             <Activity size={20} color="var(--accent-secondary)" />
                             <h2>Lifestyle & Context</h2>
@@ -182,7 +229,7 @@ const Profile = () => {
                         </div>
                     </div>
 
-                    <div className="form-section card">
+                    <div className="form-section card stagger-item">
                         <div className="section-title">
                             <Link2 size={20} color="#10B981" />
                             <h2>Share Your Profile</h2>
@@ -195,7 +242,7 @@ const Profile = () => {
                                     type="text"
                                     placeholder="e.g. sandeep_health"
                                     value={sharing.username}
-                                    onChange={e => setSharing(p => ({...p, username: e.target.value}))}
+                                    onChange={e => setSharing(p => ({ ...p, username: e.target.value }))}
                                 />
                                 {sharing.username && (
                                     <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>
@@ -204,20 +251,24 @@ const Profile = () => {
                                 )}
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center',
+                            <div style={{
+                                display: 'flex', alignItems: 'center',
                                 justifyContent: 'space-between', padding: '12px 16px',
                                 background: 'rgba(255,255,255,0.03)', borderRadius: 8,
-                                border: '1px solid #2A2D3A' }}>
+                                border: '1px solid #2A2D3A'
+                            }}>
                                 <div>
-                                    <div style={{ color: '#F8F9FA', fontWeight: 600,
-                                        fontSize: '0.9rem' }}>Make Profile Public</div>
+                                    <div style={{
+                                        color: '#F8F9FA', fontWeight: 600,
+                                        fontSize: '0.9rem'
+                                    }}>Make Profile Public</div>
                                     <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
                                         Allow others to view your health profile
                                     </div>
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => setSharing(p => ({...p, profile_public: !p.profile_public}))}
+                                    onClick={() => setSharing(p => ({ ...p, profile_public: !p.profile_public }))}
                                     style={{
                                         width: 44, height: 24, borderRadius: 12, border: 'none',
                                         cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
@@ -235,40 +286,59 @@ const Profile = () => {
 
                             {sharing.profile_public && (
                                 <div>
-                                    <label style={{ color: '#9CA3AF', fontSize: '0.8rem',
-                                        fontWeight: 600, display: 'block', marginBottom: 10 }}>
+                                    <label style={{
+                                        color: '#9CA3AF', fontSize: '0.8rem',
+                                        fontWeight: 600, display: 'block', marginBottom: 10
+                                    }}>
                                         Choose what to share:
                                     </label>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         {SHAREABLE_FIELDS.map(field => (
-                                            <label key={field.key} style={{
-                                                display: 'flex', alignItems: 'center', gap: 10,
-                                                cursor: 'pointer', padding: '8px 12px',
-                                                background: 'rgba(255,255,255,0.02)',
-                                                borderRadius: 8, border: '1px solid #2A2D3A'
-                                            }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={sharing.public_fields.includes(field.key)}
-                                                    onChange={e => {
-                                                        if (e.target.checked) {
-                                                            setSharing(p => ({
-                                                                ...p,
-                                                                public_fields: [...p.public_fields, field.key]
-                                                            }));
-                                                        } else {
-                                                            setSharing(p => ({
-                                                                ...p,
-                                                                public_fields: p.public_fields.filter(f => f !== field.key)
-                                                            }));
-                                                        }
-                                                    }}
-                                                    style={{ accentColor: '#2563EB' }}
-                                                />
-                                                <span style={{ color: '#F8F9FA', fontSize: '0.875rem' }}>
-                                                    {field.label}
-                                                </span>
-                                            </label>
+                                            <div key={field.key}>
+                                                <label style={{
+                                                    display: 'flex', alignItems: 'center', gap: 10,
+                                                    cursor: 'pointer', padding: '8px 12px',
+                                                    background: 'rgba(255,255,255,0.02)',
+                                                    borderRadius: 8, border: '1px solid #2A2D3A'
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={sharing.public_fields.includes(field.key)}
+                                                        onChange={e => {
+                                                            if (e.target.checked) {
+                                                                setSharing(p => ({
+                                                                    ...p,
+                                                                    public_fields: [...p.public_fields, field.key]
+                                                                }));
+                                                            } else {
+                                                                setSharing(p => ({
+                                                                    ...p,
+                                                                    public_fields: p.public_fields.filter(f => f !== field.key)
+                                                                }));
+                                                            }
+                                                        }}
+                                                        style={{ accentColor: '#2563EB' }}
+                                                    />
+                                                    <div>
+                                                        <span style={{ color: '#F8F9FA', fontSize: '0.875rem' }}>
+                                                            {field.label}
+                                                        </span>
+                                                        {field.desc && (
+                                                            <div style={{ color: '#6B7280', fontSize: '0.72rem', marginTop: 1 }}>
+                                                                {field.desc}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </label>
+                                                {field.key === 'reports' && sharing.public_fields?.includes('reports') && (
+                                                    <p style={{
+                                                        color: '#F59E0B', fontSize: '0.72rem',
+                                                        margin: '4px 0 0 12px', lineHeight: 1.4
+                                                    }}>
+                                                        ⚠️ Only report summaries are shared, not the actual files
+                                                    </p>
+                                                )}
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
@@ -293,8 +363,10 @@ const Profile = () => {
                                             );
                                             toast.success('Link copied!');
                                         }}
-                                        style={{ background: 'none', border: 'none',
-                                            color: '#10B981', cursor: 'pointer' }}
+                                        style={{
+                                            background: 'none', border: 'none',
+                                            color: '#10B981', cursor: 'pointer'
+                                        }}
                                     >
                                         <Copy size={16} />
                                     </button>

@@ -146,4 +146,7 @@ export const getHealthPlans = () => api.get('/lifestyle/plans');
 export const saveHealthPlan = (data) => api.post('/lifestyle/plans/save', data);
 export const getCurrentPlans = () => api.get('/lifestyle/plans/current');
 
+export const updateOnboardingProfile = (data) =>
+  api.put('/profile/', data);
+
 export default api;

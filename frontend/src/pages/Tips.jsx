@@ -38,7 +38,7 @@ const Tips = () => {
 
     return (
         <div style={{ minHeight: '100vh', background: '#0F1117' }}>
-            <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px' }}>
+            <div className="page-enter" style={{ maxWidth: 900, margin: '0 auto', padding: '32px 20px' }}>
                 {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
                     <div>
@@ -52,19 +52,19 @@ const Tips = () => {
                 </div>
 
                 {/* Tip of the Day */}
-                <div style={{
+                <div className="card-hover stagger-item" style={{
                     background: `linear-gradient(135deg, rgba(37,99,235,.15), rgba(139,92,246,.1))`,
                     border: '1px solid rgba(37,99,235,.3)', borderRadius: 16, padding: '28px',
-                    marginBottom: 28,
+                    marginBottom: 28, position: 'relative', overflow: 'hidden'
                 }}>
                     <div style={{ fontSize: '0.72rem', color: '#2563EB', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
                         ✨ {language === 'telugu' ? 'ఈ రోజు చిట్కా' : 'Tip of the Day'}
                     </div>
                     <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                        <span style={{ fontSize: 36 }}>{todayTip.icon}</span>
+                        <span style={{ fontSize: 36, filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.3))' }}>{todayTip.icon}</span>
                         <div>
-                            <h2 style={{ marginBottom: 8 }}>{todayTip.title}</h2>
-                            <p style={{ lineHeight: 1.7 }}>{todayTip.body}</p>
+                            <h2 style={{ marginBottom: 8, fontSize: '1.5rem', fontWeight: 800 }}>{todayTip.title}</h2>
+                            <p style={{ lineHeight: 1.7, color: '#E5E7EB' }}>{todayTip.body}</p>
                             <span style={{ display: 'inline-block', marginTop: 12 }} className={`badge badge-blue`}>{todayTip.cat}</span>
                         </div>
                     </div>
@@ -86,15 +86,19 @@ const Tips = () => {
                 {/* Tips Grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 14 }}>
                     {shown.map((tip, i) => (
-                        <div key={i} className="card animate-in" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 20 }}>
+                        <div key={i} className="card stagger-item card-hover" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 20 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div style={{ width: 40, height: 40, borderRadius: 10, background: tip.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+                                <div style={{ 
+                                    width: 44, height: 44, borderRadius: 12, background: tip.bg, 
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
+                                    border: `1px solid ${tip.color}33`
+                                }}>
                                     {tip.icon}
                                 </div>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: tip.color, textTransform: 'uppercase', letterSpacing: .5 }}>{tip.cat}</span>
                             </div>
-                            <h3 style={{ color: '#F8F9FA', fontWeight: 700 }}>{tip.title}</h3>
-                            <p style={{ fontSize: '0.85rem', lineHeight: 1.65 }}>{tip.body}</p>
+                            <h3 style={{ color: '#F8F9FA', fontWeight: 700, fontSize: '1rem' }}>{tip.title}</h3>
+                            <p style={{ fontSize: '0.85rem', lineHeight: 1.6, color: '#9CA3AF' }}>{tip.body}</p>
                         </div>
                     ))}
                 </div>

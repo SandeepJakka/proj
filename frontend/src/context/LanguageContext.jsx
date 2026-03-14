@@ -1,36 +1,305 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
+const TRANSLATIONS = {
+  english: {
+    nav_home: 'Home',
+    nav_chat: 'Chat',
+    nav_analyze: 'Analyze',
+    nav_reminders: 'Reminders',
+    nav_lifestyle: 'Lifestyle',
+    nav_reports: 'Reports',
+    nav_map: 'Find Doctors',
+    nav_tips: 'Health Tips',
+    nav_profile: 'Profile',
+    nav_logout: 'Logout',
+    ai_online: 'Healthora AI Online',
+    dash_greeting: 'Good day',
+    dash_subtitle: 'Your Healthora AI is ready to assist you.',
+    dash_reports_label: 'Reports Analyzed',
+    dash_lang_label: 'Active Language',
+    dash_activity_label: 'Activity Level',
+    dash_health_score: 'Health Score',
+    dash_not_set: 'Not set',
+    dash_no_data: 'No data',
+    dash_good: '😊 Good',
+    dash_fair: '😐 Fair',
+    dash_review: '😟 Review',
+    dash_recent_insights: 'Recent Insights',
+    dash_ai_analysis: 'AI analysis of your reports',
+    dash_view_all: 'View all',
+    dash_no_insights: 'No report insights yet',
+    dash_upload_analyze: 'Upload & Analyze Report',
+    dash_medical_profile: 'Medical Profile',
+    dash_edit: 'Edit',
+    dash_age_gender: 'Age/Gender',
+    dash_body_metrics: 'Body Metrics',
+    dash_blood_type: 'Blood Type',
+    dash_conditions: 'Conditions',
+    dash_setup_profile: 'Set up your health profile',
+    dash_timeline: 'Health Timeline',
+    dash_events_recorded: 'health events recorded',
+    dash_filter_all: '🗂 All',
+    dash_filter_reports: '📄 Reports',
+    dash_filter_medicines: '💊 Medicines',
+    dash_filter_plans: '📋 Plans',
+    dash_no_events: 'No events yet. Upload reports or add reminders to see your health timeline.',
+    dash_show_less: '↑ Show less',
+    dash_show_more_events: 'more events',
+    dash_quick_actions: 'Quick Actions',
+    dash_today: 'Today',
+    dash_yesterday: 'Yesterday',
+    dash_days_ago: 'days ago',
+    dash_weeks_ago: 'w ago',
+    dash_show_more_insights: 'more insights',
+    dash_loading: 'Loading your dashboard…',
+    qa_analyze: 'Analyze Report',
+    qa_analyze_sub: 'Upload & explain',
+    qa_chat: 'Chat AI',
+    qa_chat_sub: 'Ask a health question',
+    qa_map: 'Find Doctors',
+    qa_map_sub: 'Nearby clinics & hospitals',
+    qa_tips: 'Health Tips',
+    qa_tips_sub: 'Daily wellness tips',
+    qa_lifestyle: 'Lifestyle',
+    qa_lifestyle_sub: 'Diet & workout plans',
+    qa_reports: 'My Reports',
+    qa_reports_sub: 'View all reports',
+    rem_title: 'Medicine Reminders',
+    rem_subtitle: 'Never miss a dose — get email alerts',
+    rem_scan: 'Scan Prescription',
+    rem_scanning: 'Scanning...',
+    rem_add_manual: 'Add Manually',
+    rem_upload_photo: 'Upload Photo',
+    rem_scan_hint_title: 'Have a prescription? Scan it!',
+    rem_scan_hint_desc: 'Upload your doctor\'s prescription photo and Healthora AI will automatically detect all medicines and help you set reminders for each one.',
+    rem_no_reminders_title: 'No reminders yet',
+    rem_no_reminders_desc: 'Scan a prescription or add medicines manually to get email reminders',
+    rem_loading: 'Loading reminders...',
+    rem_active: 'Active',
+    rem_paused: 'Paused',
+    rem_form_title: 'Add Medicine Reminder',
+    rem_form_name: 'Medicine Name *',
+    rem_form_name_ph: 'e.g. Paracetamol, Metformin',
+    rem_form_dosage: 'Dosage',
+    rem_form_dosage_ph: 'e.g. 500mg, 1 tablet',
+    rem_form_freq: 'Frequency',
+    rem_form_times: 'Reminder Times',
+    rem_form_add_time: '+ Add Time',
+    rem_form_instructions: 'Instructions (optional)',
+    rem_form_instructions_ph: 'e.g. After food, Before sleep',
+    rem_form_end_date: 'End Date (optional)',
+    rem_form_cancel: 'Cancel',
+    rem_form_save: 'Save Reminder',
+    rem_form_saving: 'Saving...',
+    rem_freq_once: 'Once a day',
+    rem_freq_twice: 'Twice a day',
+    rem_freq_thrice: 'Three times',
+    rem_freq_custom: 'Custom',
+    life_title: 'Lifestyle Intelligence',
+    life_subtitle: 'AI-generated routines focused on longevity and safety.',
+    life_view_plans: '📋 View Saved Plans',
+    life_nutrition_title: 'Nutritional Guide',
+    life_nutrition_sub: 'Personalized meal plans',
+    life_fitness_title: 'Adaptive Fitness',
+    life_fitness_sub: 'Condition-aware workouts',
+    life_start_consult: 'Start Consultation',
+    life_regenerate: '🔄 Regenerate',
+    life_saved_plans: 'Saved Plans',
+    life_no_plans: 'No saved plans yet.',
+    life_nutrition_heading: 'Start Your Nutrition Consultation',
+    life_nutrition_desc: 'I\'ll have a friendly conversation with you about your eating habits, health goals, and lifestyle to create a truly personalized meal plan just for you.',
+    life_fitness_heading: 'Start Your Fitness Consultation',
+    life_fitness_desc: 'I\'ll create a safe workout plan tailored to your health conditions, fitness level, and goals.',
+    life_save_plan: '💾 Save Plan',
+    life_saving: 'Saving...',
+    life_close_chat: 'Close',
+    rem_wizard_title: 'Setting up reminders from prescription',
+    rem_wizard_med: 'Medicine',
+    rem_wizard_of: 'of',
+    rem_wizard_success: 'All reminders set successfully!',
+    rem_wizard_desc: 'You will receive email reminders at your scheduled times. Check below to see all active reminders.',
+    rem_wizard_scan_another: 'Scan Another Prescription',
+    dash_analysis_click: 'Analysis available — click to view',
+    dash_nutri_plan: 'Nutrition Plan',
+    dash_nutri_sub: 'Personalized meal plan saved',
+    dash_fitness_plan: 'Fitness Plan',
+    dash_fitness_sub: 'Personalized workout plan saved',
+    dash_rep_analyzed: 'Report analyzed by AI',
+    dash_rep_uploaded: 'Report uploaded',
+    dash_med_rep: 'Medical Report',
+    dash_active: 'Active',
+    dash_paused: 'Paused',
+  },
+  telugu: {
+    nav_home: 'హోమ్',
+    nav_chat: 'చాట్',
+    nav_analyze: 'విశ్లేషించు',
+    nav_reminders: 'రిమైండర్లు',
+    nav_lifestyle: 'జీవనశైలి',
+    nav_reports: 'నివేదికలు',
+    nav_map: 'వైద్యులను కనుగొనండి',
+    nav_tips: 'ఆరోగ్య చిట్కాలు',
+    nav_profile: 'ప్రొఫైల్',
+    nav_logout: 'లాగ్అవుట్',
+    ai_online: 'Healthora AI ఆన్లైన్',
+    dash_greeting: 'శుభోదయం',
+    dash_subtitle: 'మీ Healthora AI సహాయానికి సిద్ధంగా ఉంది.',
+    dash_reports_label: 'విశ్లేషించిన నివేదికలు',
+    dash_lang_label: 'భాష',
+    dash_activity_label: 'చురుకుదనం స్థాయి',
+    dash_health_score: 'ఆరోగ్య స్కోర్',
+    dash_not_set: 'సెట్ చేయలేదు',
+    dash_no_data: 'డేటా లేదు',
+    dash_good: '😊 మంచిది',
+    dash_fair: '😐 సాధారణం',
+    dash_review: '😟 తనిఖీ చేయండి',
+    dash_recent_insights: 'తాజా అంతర్దృష్తులు',
+    dash_ai_analysis: 'మీ నివేదికల AI విశ్లేషణ',
+    dash_view_all: 'అన్నీ చూడండి',
+    dash_no_insights: 'ఇంకా నివేదిక అంతర్దృష్తులు లేవు',
+    dash_upload_analyze: 'నివేదికను అప్లోడ్ చేయండి',
+    dash_medical_profile: 'వైద్య ప్రొఫైల్',
+    dash_edit: 'సవరించు',
+    dash_age_gender: 'వయసు/లింగం',
+    dash_body_metrics: 'శరీర కొలతలు',
+    dash_blood_type: 'రక్త రకం',
+    dash_conditions: 'వ్యాధులు',
+    dash_setup_profile: 'మీ ఆరోగ్య ప్రొఫైల్ సెటప్ చేయండి',
+    dash_timeline: 'ఆరోగ్య టైమ్లైన్',
+    dash_events_recorded: 'ఆరోగ్య సంఘటనలు నమోదు అయ్యాయి',
+    dash_filter_all: '🗂 అన్నీ',
+    dash_filter_reports: '📄 నివేదికలు',
+    dash_filter_medicines: '💊 మందులు',
+    dash_filter_plans: '📋 ప్లాన్లు',
+    dash_no_events: 'ఇంకా సంఘటనలు లేవు. నివేదికలు అప్లోడ్ చేయండి లేదా రిమైండర్లు జోడించండి.',
+    dash_show_less: '↑ తక్కువ చూపించు',
+    dash_show_more_events: 'మరిన్ని సంఘటనలు',
+    dash_quick_actions: 'త్వరిత చర్యలు',
+    dash_today: 'నేడు',
+    dash_yesterday: 'నిన్న',
+    dash_days_ago: 'రోజుల క్రితం',
+    dash_weeks_ago: 'వారాల క్రితం',
+    dash_show_more_insights: 'మరిన్ని అంతర్దృష్తులు',
+    dash_loading: 'డ్యాష్బోర్డ్ లోడ్ అవుతోంది…',
+    qa_analyze: 'నివేదిక విశ్లేషించు',
+    qa_analyze_sub: 'అప్లోడ్ & వివరించు',
+    qa_chat: 'AI చాట్',
+    qa_chat_sub: 'ఆరోగ్య ప్రశ్న అడగండి',
+    qa_map: 'వైద్యులను కనుగొనండి',
+    qa_map_sub: 'సమీప ఆసుపత్రులు',
+    qa_tips: 'ఆరోగ్య చిట్కాలు',
+    qa_tips_sub: 'రోజువారీ సూచనలు',
+    qa_lifestyle: 'జీవనశైలి',
+    qa_lifestyle_sub: 'డైట్ & వ్యాయామ ప్లాన్లు',
+    qa_reports: 'నా నివేదికలు',
+    qa_reports_sub: 'అన్ని నివేదికలు చూడండి',
+    rem_title: 'మందు రిమైండర్లు',
+    rem_subtitle: 'మోతాదు మిస్ కానీయకండి — ఇమెయిల్ హెచ్చరికలు పొందండి',
+    rem_scan: 'ప్రిస్క్రిప్షన్ స్కాన్',
+    rem_scanning: 'స్కాన్ అవుతోంది...',
+    rem_add_manual: 'చేతితో జోడించు',
+    rem_upload_photo: 'ఫోటో అప్లోడ్',
+    rem_scan_hint_title: 'ప్రిస్క్రిప్షన్ ఉందా? స్కాన్ చేయండి!',
+    rem_scan_hint_desc: 'మీ వైద్యుని ప్రిస్క్రిప్షన్ ఫోటో అప్లోడ్ చేయండి, Healthora AI అన్ని మందులను గుర్తించి రిమైండర్లు సెట్ చేయడంలో సహాయపడుతుంది.',
+    rem_no_reminders_title: 'ఇంకా రిమైండర్లు లేవు',
+    rem_no_reminders_desc: 'ఇమెయిల్ రిమైండర్లు పొందడానికి ప్రిస్క్రిప్షన్ స్కాన్ చేయండి లేదా మందులు చేతితో జోడించండి',
+    rem_loading: 'రిమైండర్లు లోడ్ అవుతున్నాయి...',
+    rem_active: 'చురుకుగా ఉంది',
+    rem_paused: 'నిలిపివేయబడింది',
+    rem_form_title: 'మందు రిమైండర్ జోడించు',
+    rem_form_name: 'మందు పేరు *',
+    rem_form_name_ph: 'ఉదా. Paracetamol, Metformin',
+    rem_form_dosage: 'మోతాదు',
+    rem_form_dosage_ph: 'ఉదా. 500mg, 1 tablet',
+    rem_form_freq: 'పౌనఃపున్యం',
+    rem_form_times: 'రిమైండర్ సమయాలు',
+    rem_form_add_time: '+ సమయం జోడించు',
+    rem_form_instructions: 'సూచనలు (ఐచ్ఛికం)',
+    rem_form_instructions_ph: 'ఉదా. భోజనం తర్వాత, నిద్రకు ముందు',
+    rem_form_end_date: 'ముగింపు తేదీ (ఐచ్చ్హికం)',
+    rem_form_cancel: 'రద్దు చేయి',
+    rem_form_save: 'రిమైండర్ సేవ్ చేయి',
+    rem_form_saving: 'సేవ్ అవుతోంది...',
+    rem_freq_once: 'రోజుకు ఒకసారి',
+    rem_freq_twice: 'రోజుకు రెండుసార్లు',
+    rem_freq_thrice: 'మూడుసార్లు',
+    rem_freq_custom: 'అనుకూలం',
+    life_title: 'జీవనశైలి తెలివి',
+    life_subtitle: 'దీర్ఘాయువు మరియు సురక్షితత కోసం AI-రూపొందించిన దినచర్యలు.',
+    life_view_plans: '📋 సేవ్ చేసిన ప్లాన్లు చూడండి',
+    life_nutrition_title: 'పోషకాహార మార్గదర్శి',
+    life_nutrition_sub: 'వ్యక్తిగతీకరించిన భోజన ప్లాన్లు',
+    life_fitness_title: 'అనుకూల ఫిట్నెస్',
+    life_fitness_sub: 'పరిస్థితి-అనుగుణ వ్యాయామాలు',
+    life_start_consult: 'సంప్రదింపు ప్రారంభించు',
+    life_regenerate: '🔄 మళ్ళీ రూపొందించు',
+    life_saved_plans: 'సేవ్ చేసిన ప్లాన్లు',
+    life_no_plans: 'ఇంకా సేవ్ చేసిన ప్లాన్లు లేవు.',
+    life_nutrition_heading: 'మీ పోషకాహార సంప్రదింపు ప్రారంభించండి',
+    life_nutrition_desc: 'మీ తినే అలవాట్లు, ఆరోగ్య లక్ష్యాలు మరియు జీవనశైలి గురించి మాట్లాడి మీకు నిజంగా వ్యక్తిగతీకరించిన భోజన ప్లాన్ రూపొందిస్తాను.',
+    life_fitness_heading: 'మీ ఫిట్నెస్ సంప్రదింపు ప్రారంభించండి',
+    life_fitness_desc: 'మీ ఆరోగ్య పరిస్థితులు, ఫిట్నెస్ స్థాయి మరియు లక్ష్యాలకు అనుగుణంగా సురక్షితమైన వ్యాయామ ప్లాన్ రూపొందిస్తాను.',
+    life_save_plan: '💾 ప్లాన్ సేవ్ చేయి',
+    life_saving: 'సేవ్ అవుతోంది...',
+    life_close_chat: 'మూసివేయి',
+    rem_wizard_title: 'ప్రిస్క్రిప్షన్ నుండి రిమైండర్లు సెటప్ చేస్తోంది',
+    rem_wizard_med: 'మందు',
+    rem_wizard_of: 'లో',
+    rem_wizard_success: 'అన్ని రిమైండర్లు విజయవంతంగా సెట్ చేయబడ్డాయి!',
+    rem_wizard_desc: 'మీరు షెడ్యూల్ చేసిన సమయాల్లో ఇమెయిల్ రిమైండర్‌లను అందుకుంటారు. అన్ని రిమైండర్‌లను క్రింద చూడండి.',
+    rem_wizard_scan_another: 'మరో ప్రిస్క్రిప్షన్ స్కాన్ చేయండి',
+    dash_analysis_click: 'విశ్లేషణ అందుబాటులో ఉంది — చూడటానికి క్లిక్ చేయండి',
+    dash_nutri_plan: 'పోషకాహార ప్రణాళిక',
+    dash_nutri_sub: 'వ్యక్తిగతీకరించిన భోజన ప్రణాళిక సేవ్ చేయబడింది',
+    dash_fitness_plan: 'ఫిట్‌నెస్ ప్లాన్',
+    dash_fitness_sub: 'వ్యక్తిగతీకరించిన వ్యాయామ ప్రణాళిక సేవ్ చేయబడింది',
+    dash_rep_analyzed: 'AI ద్వారా నివేదిక విశ్లేషించబడింది',
+    dash_rep_uploaded: 'నివేదిక అప్‌లోడ్ చేయబడింది',
+    dash_med_rep: 'వైద్య నివేదిక',
+    dash_active: 'క్రియాశీల',
+    dash_paused: 'నిలిపివేయబడింది',
+  }
+};
+
 const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
-    const [language, setLanguage] = useState(
-        () => localStorage.getItem('healthora_lang') || 'english'
-    );
+  const [language, setLanguage] = useState(
+    () => localStorage.getItem('healthora_lang') || 'english'
+  );
 
-    const toggleLanguage = useCallback(() => {
-        setLanguage(prev => {
-            const next = prev === 'english' ? 'telugu' : 'english';
-            localStorage.setItem('healthora_lang', next);
-            return next;
-        });
-    }, []);
+  const toggleLanguage = useCallback(() => {
+    setLanguage(prev => {
+      const next = prev === 'english' ? 'telugu' : 'english';
+      localStorage.setItem('healthora_lang', next);
+      return next;
+    });
+  }, []);
 
-    const setLang = useCallback((lang) => {
-        setLanguage(lang);
-        localStorage.setItem('healthora_lang', lang);
-    }, []);
+  const setLang = useCallback((lang) => {
+    setLanguage(lang);
+    localStorage.setItem('healthora_lang', lang);
+  }, []);
 
-    return (
-        <LanguageContext.Provider value={{ language, toggleLanguage, setLang }}>
-            {children}
-        </LanguageContext.Provider>
-    );
+  const t = useCallback((key) => {
+    return TRANSLATIONS[language]?.[key]
+      ?? TRANSLATIONS['english']?.[key]
+      ?? key;
+  }, [language]);
+
+  return (
+    <LanguageContext.Provider value={{ language, toggleLanguage, setLang, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
 };
 
 export const useLanguage = () => {
-    const ctx = useContext(LanguageContext);
-    if (!ctx) throw new Error('useLanguage must be used inside LanguageProvider');
-    return ctx;
+  const ctx = useContext(LanguageContext);
+  if (!ctx) throw new Error('useLanguage must be used inside LanguageProvider');
+  return ctx;
 };
+
+export const useT = () => useLanguage().t;
 
 export default LanguageContext;

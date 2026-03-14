@@ -20,6 +20,7 @@ import Lifestyle from './pages/Lifestyle';
 import Profile from './pages/Profile';
 import Reminders from './pages/Reminders';
 import PublicProfile from './pages/PublicProfile';
+import Onboarding from './pages/Onboarding';
 
 const isLoggedIn = () => !!localStorage.getItem('access_token');
 
@@ -59,6 +60,13 @@ function App() {
               <AuthLayout>
                 <Reminders />
               </AuthLayout>
+            </Protected>
+          } />
+
+          {/* Onboarding - protected, new users only */}
+          <Route path="/onboarding" element={
+            <Protected>
+              <Onboarding />
             </Protected>
           } />
 

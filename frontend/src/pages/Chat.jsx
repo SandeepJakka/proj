@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import toast, { Toaster } from 'react-hot-toast';
 import { useLanguage } from '../context/LanguageContext';
-import { guestChat, sendMessage as apiSend, getChatHistory, clearChatHistory, analyzeGuestReport, analyzeReport } from '../services/api';
+import { guestChat, sendMessage as apiSend, getChatHistory, clearChatHistory, analyzeGuestReport, analyzeReport, deleteChatSession } from '../services/api';
 import { Send, Bot, User, Plus, Paperclip, Trash2, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -18,7 +18,15 @@ const Chat = () => {
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(() => uuidv4());
   const [sessions, setSessions] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+  const [hoveredSessionId, setHoveredSessionId] = useState(null);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const msgCount = messages.filter(m => m.role === 'user').length;
@@ -67,6 +75,7 @@ const Chat = () => {
       setMessages([{ role: 'assistant', content: WELCOME }]);
     } finally {
       setLoading(false);
+      if (isMobile) setSidebarOpen(false);
     }
   };
 
@@ -84,6 +93,21 @@ const Chat = () => {
       setSessions([]);
     } catch (_) {
       toast.error('Failed to clear history');
+    }
+  };
+
+  const handleDeleteSession = async (e, sessionToDelete) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this chat session?')) return;
+    try {
+      await deleteChatSession(sessionToDelete.session_id);
+      toast.success('Chat session deleted');
+      if (sessionId === sessionToDelete.session_id) {
+        startNewChat();
+      }
+      loadSessions();
+    } catch (_) {
+      toast.error('Failed to delete session');
     }
   };
 
@@ -179,13 +203,23 @@ const Chat = () => {
   const SIDEBAR_W = 260;
 
   return (
-    <div style={{ height: '100vh', display: 'flex', background: '#0F1117', overflow: 'hidden' }}>
+    <div className="page-enter" style={{
+      height: 'calc(100vh - 52px)',
+      display: 'flex',
+      background: '#0F1117',
+      overflow: 'hidden'
+    }}>
       <Toaster position="top-right" toastOptions={{ className: 'toast-dark' }} />
 
       {/* Left Sidebar */}
       <div style={{
-        width: sidebarOpen ? SIDEBAR_W : 0,
-        minWidth: sidebarOpen ? SIDEBAR_W : 0,
+        width: sidebarOpen ? (isMobile ? '100%' : SIDEBAR_W) : 0,
+        minWidth: sidebarOpen ? (isMobile ? '100%' : SIDEBAR_W) : 0,
+        position: isMobile && sidebarOpen ? 'absolute' : 'relative',
+        top: isMobile && sidebarOpen ? 0 : 'auto',
+        left: isMobile && sidebarOpen ? 0 : 'auto',
+        bottom: isMobile && sidebarOpen ? 0 : 'auto',
+        zIndex: isMobile && sidebarOpen ? 100 : 'auto',
         background: '#1A1D27',
         borderRight: '1px solid #2A2D3A',
         display: 'flex',
@@ -197,7 +231,7 @@ const Chat = () => {
         {sidebarOpen && (
           <>
             {/* New Chat */}
-            <div style={{ padding: '16px 12px', borderBottom: '1px solid #2A2D3A' }}>
+            <div style={{ padding: '16px 12px', borderBottom: '1px solid #2A2D3A', display: 'flex', alignItems: 'center' }}>
               <button
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center' }}
@@ -205,6 +239,18 @@ const Chat = () => {
               >
                 <Plus size={16} /> New Chat
               </button>
+              {isMobile && sidebarOpen && (
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  style={{
+                    background: 'none', border: 'none',
+                    color: '#9CA3AF', cursor: 'pointer',
+                    padding: 4, marginLeft: 'auto'
+                  }}
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
             {/* Sessions list */}
@@ -215,6 +261,7 @@ const Chat = () => {
                     <div
                       key={s.session_id || i}
                       onClick={() => loadSession(s)}
+                      className="stagger-item"
                       style={{
                         padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
                         marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8,
@@ -224,10 +271,12 @@ const Chat = () => {
                         transition: 'background 0.15s ease',
                       }}
                       onMouseEnter={e => {
+                        setHoveredSessionId(s.session_id);
                         if (s.session_id !== sessionId)
                           e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
                       }}
                       onMouseLeave={e => {
+                        setHoveredSessionId(null);
                         if (s.session_id !== sessionId)
                           e.currentTarget.style.background = 'transparent';
                       }}
@@ -236,6 +285,20 @@ const Chat = () => {
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                         {s.title || 'Chat Session'}
                       </span>
+                      {hoveredSessionId === s.session_id && (
+                        <button
+                          onClick={(e) => handleDeleteSession(e, s)}
+                          style={{
+                            background: 'none', border: 'none', padding: 4, cursor: 'pointer',
+                            color: '#EF4444', display: 'flex', alignItems: 'center', opacity: 0.8
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.opacity = 1; }}
+                          onMouseLeave={e => { e.currentTarget.style.opacity = 0.8; }}
+                          title="Delete Session"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -278,7 +341,7 @@ const Chat = () => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* Top Bar */}
         <div style={{
-          padding: '12px 16px',
+          padding: isMobile ? '10px 12px' : '12px 16px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           borderBottom: '1px solid #2A2D3A',
           background: 'rgba(26,29,39,.95)', backdropFilter: 'blur(10px)',
@@ -299,7 +362,7 @@ const Chat = () => {
             <div>
               <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Healthora AI</div>
               <div style={{ fontSize: '0.7rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+                <span className="status-dot" />
                 {loading ? 'Thinking…' : 'Online'}
               </div>
             </div>
@@ -318,14 +381,37 @@ const Chat = () => {
 
         {/* Messages */}
         <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {messages.length <= 1 && !loading && (
+            <div className="empty-state" style={{ flex: 1, justifyContent: 'center' }}>
+              <div className="empty-state-icon">🤖</div>
+              <h3>Welcome to Healthora AI</h3>
+              <p>Ask anything about your health, symptoms, or upload a report for a quick breakdown.</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
+                {[
+                  'What are common flu symptoms?',
+                  'Healthy dinner ideas',
+                  'Explain my CBC report'
+                ].map(q => (
+                  <button 
+                    key={q} 
+                    className="btn btn-ghost btn-sm" 
+                    onClick={() => setInput(q)}
+                    style={{ fontSize: '0.75rem', borderRadius: 20 }}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {messages.map((msg, i) => (
             <div
               key={i}
-              className="animate-in"
+              className="stagger-item"
               style={{
                 display: 'flex',
                 flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
-                gap: 10, maxWidth: '80%',
+                gap: 10, maxWidth: isMobile ? '90%' : '80%',
                 alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
               }}
             >
@@ -384,7 +470,7 @@ const Chat = () => {
 
         {/* Input */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid #2A2D3A', background: 'rgba(26,29,39,.95)', flexShrink: 0 }}>
-          <form onSubmit={handleSend} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <form onSubmit={handleSend} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             {/* Fix 5: File upload button */}
             <>
               <input
@@ -410,7 +496,7 @@ const Chat = () => {
               value={input}
               onChange={e => setInput(e.target.value)}
               disabled={loading}
-              style={{ flex: 1 }}
+              style={{ flex: 1, fontSize: '16px' }}
             />
             <button type="submit" className="btn btn-primary" disabled={!input.trim() || loading}>
               <Send size={15} />
@@ -421,6 +507,21 @@ const Chat = () => {
           </div>
         </div>
       </div>
+      <style>{`
+        @media (max-width: 768px) {
+          .chat-message-content {
+            font-size: 0.875rem !important;
+          }
+          .chat-input-area {
+            padding: 10px 12px !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .chat-message-content {
+            font-size: 0.82rem !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

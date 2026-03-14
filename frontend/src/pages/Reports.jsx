@@ -1,9 +1,60 @@
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { getReports, uploadReport, explainReport, getTrends, deleteReport } from '../services/api';
-import { Upload, FileText, CheckCircle, Search, AlertCircle, Loader, TrendingUp, Trash2, Image } from 'lucide-react';
+import { getReports, uploadReport, explainReport, getTrends, deleteReport, compareReports, getReportsByType } from '../services/api';
+import { Upload, FileText, CheckCircle, Search, AlertCircle, Loader, TrendingUp, Trash2, Image, GitCompare, ArrowRight } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import toast from 'react-hot-toast';
+
+// ── ReportSelector sub-component ────────────────────────
+const ReportSelector = ({ label, selected, onSelect, reports, otherSelected }) => (
+  <div style={{ flex: 1 }}>
+    <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 8 }}>
+      {label}
+    </label>
+    <div style={{ border: '1px solid #2A2D3A', borderRadius: 10, overflow: 'hidden', maxHeight: 220, overflowY: 'auto' }}>
+      {reports.map(r => {
+        const isOther = otherSelected?.id === r.id;
+        const isSelected = selected?.id === r.id;
+        return (
+          <div
+            key={r.id}
+            onClick={() => !isOther && onSelect(r)}
+            style={{
+              padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10,
+              cursor: isOther ? 'not-allowed' : 'pointer',
+              background: isSelected ? 'rgba(37,99,235,0.15)' : isOther ? 'rgba(107,114,128,0.05)' : 'transparent',
+              borderBottom: '1px solid #2A2D3A',
+              opacity: isOther ? 0.4 : 1,
+              transition: 'background 0.15s',
+            }}
+          >
+            <FileText size={14} color={isSelected ? '#60A5FA' : '#6B7280'} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: '0.8rem', fontWeight: 600,
+                color: isSelected ? '#60A5FA' : '#F8F9FA',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {r.filename}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>
+                {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </div>
+            </div>
+            {isSelected && (
+              <div style={{
+                width: 18, height: 18, borderRadius: '50%', background: '#2563EB',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <span style={{ color: '#fff', fontSize: '0.65rem', fontWeight: 700 }}>✓</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
 
 const STATUS_STYLE = (s) => {
   const st = (s || '').toUpperCase();
@@ -32,6 +83,22 @@ const Reports = () => {
   const [fileUrl, setFileUrl] = useState(null);
   const [fileLoading, setFileLoading] = useState(false);
   const [fileType, setFileType] = useState(null);
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Compare state
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareReport1, setCompareReport1] = useState(null);
+  const [compareReport2, setCompareReport2] = useState(null);
+  const [compareResult, setCompareResult] = useState(null);
+  const [comparing, setComparing] = useState(false);
+  const [compareLanguage, setCompareLanguage] = useState('english');
 
   useEffect(() => { fetchReports(); }, []);
 
@@ -112,6 +179,34 @@ const Reports = () => {
     }
   };
 
+  const handleCompare = async () => {
+    if (!compareReport1 || !compareReport2) {
+      toast.error('Please select two reports to compare');
+      return;
+    }
+    if (compareReport1.id === compareReport2.id) {
+      toast.error('Please select two different reports');
+      return;
+    }
+    setComparing(true);
+    setCompareResult(null);
+    try {
+      const res = await compareReports(compareReport1.id, compareReport2.id, compareLanguage);
+      setCompareResult(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Comparison failed. Please try again.');
+    } finally {
+      setComparing(false);
+    }
+  };
+
+  const openCompareModal = () => {
+    setCompareOpen(true);
+    setCompareReport1(null);
+    setCompareReport2(null);
+    setCompareResult(null);
+  };
+
   const formatDate = (d) => {
     if (!d) return '';
     const dt = new Date(d);
@@ -133,21 +228,31 @@ const Reports = () => {
     || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div className="page-header" style={{ marginBottom: 0 }}>
           <h1>Medical Reports</h1>
           <p>Your uploaded medical documents</p>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
+          <button
+            className="btn btn-ghost"
+            onClick={openCompareModal}
+            disabled={reports.length < 2}
+            title={reports.length < 2 ? 'Upload at least 2 reports to compare' : ''}
+            style={{ fontSize: 'clamp(0.72rem, 2.5vw, 0.85rem)', padding: 'clamp(6px, 2vw, 10px) clamp(10px, 3vw, 16px)' }}
+          >
+            <GitCompare size={16} /> Compare Reports
+          </button>
           <button
             className={`btn btn-ghost ${viewMode === 'trends' ? 'btn-primary' : ''}`}
             onClick={fetchAnalytics}
+            style={{ fontSize: 'clamp(0.72rem, 2.5vw, 0.85rem)', padding: 'clamp(6px, 2vw, 10px) clamp(10px, 3vw, 16px)' }}
           >
             <TrendingUp size={16} /> Longitudinal Analysis
           </button>
-          <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
+          <label className="btn btn-primary" style={{ cursor: 'pointer', fontSize: 'clamp(0.72rem, 2.5vw, 0.85rem)', padding: 'clamp(6px, 2vw, 10px) clamp(10px, 3vw, 16px)' }}>
             <Upload size={16} /> {uploading ? 'Analyzing…' : 'Upload New Report'}
             <input type="file" hidden onChange={handleFileUpload} disabled={uploading} accept=".pdf,.jpg,.jpeg,.png" />
           </label>
@@ -155,9 +260,18 @@ const Reports = () => {
       </div>
 
       {/* Two-column layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, minHeight: 'calc(100vh - 220px)' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '300px 1fr',
+        gap: isMobile ? 16 : 20,
+        minHeight: isMobile ? 'auto' : 'calc(100vh - 220px)'
+      }}>
         {/* LEFT — Report List */}
-        <div className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="card" style={{
+          padding: 0, display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+          maxHeight: isMobile ? 320 : 'none'
+        }}>
           <div style={{ padding: '16px 16px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ fontSize: '0.95rem', fontWeight: 700 }}>Archived Reports</h3>
@@ -181,15 +295,17 @@ const Reports = () => {
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px' }}>
             {filteredReports.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px 16px', color: '#6B7280' }}>
-                <FileText size={28} style={{ opacity: 0.4, marginBottom: 8 }} />
-                <p style={{ fontSize: '0.8rem' }}>No reports uploaded yet</p>
+              <div className="empty-state" style={{ padding: '32px 16px' }}>
+                <div className="empty-state-icon">📂</div>
+                <h3>No reports yet</h3>
+                <p>Upload your first medical report to get an AI-powered explanation.</p>
               </div>
             )}
             {filteredReports.map(r => (
               <div
                 key={r.id}
                 onClick={() => { setSelectedReport(r); setAnalysis(null); setViewMode('list'); }}
+                className="stagger-item card-hover"
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                   borderRadius: 8, cursor: 'pointer', marginBottom: 2, position: 'relative',
@@ -233,8 +349,13 @@ const Reports = () => {
               <h2 style={{ marginBottom: 4 }}>Health Progress & Trends</h2>
               <p style={{ fontSize: '0.85rem', marginBottom: 20 }}>Comparing {reports.length} reports</p>
               {loadingTrends ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 12, color: '#9CA3AF' }}>
-                  <Loader className="spin" size={32} /> <p>Analyzing clinical history…</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div className="skeleton skeleton-title" style={{ width: '40%' }} />
+                  <div className="skeleton skeleton-text" style={{ width: '100%' }} />
+                  <div className="skeleton skeleton-text" style={{ width: '85%' }} />
+                  <div className="skeleton skeleton-text" style={{ width: '70%' }} />
+                  <div className="skeleton skeleton-text" style={{ width: '90%' }} />
+                  <div className="skeleton skeleton-text" style={{ width: '60%' }} />
                 </div>
               ) : trends ? (
                 <div className="markdown-content">
@@ -250,14 +371,20 @@ const Reports = () => {
           ) : selectedReport ? (
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               {/* Report header */}
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #2A2D3A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{
+                padding: isMobile ? '14px 16px' : '20px 24px',
+                borderBottom: '1px solid #2A2D3A',
+                display: 'flex', justifyContent: 'space-between',
+                alignItems: isMobile ? 'flex-start' : 'center',
+                flexWrap: 'wrap', gap: 10
+              }}>
                 <div>
                   <h2 style={{ fontSize: '1.1rem', marginBottom: 4 }}>{selectedReport.filename}</h2>
                   <span className="badge badge-blue" style={{ textTransform: 'uppercase', fontSize: '0.7rem' }}>
                     {selectedReport.file_type || 'document'}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     onClick={async () => {
                       setViewerReport(selectedReport);
@@ -265,7 +392,7 @@ const Reports = () => {
                       setFileUrl(null);
                       setFileLoading(true);
                       setFileType(selectedReport.file_type);
-                      
+
                       try {
                         // Fetch the file as a blob with auth token
                         const token = localStorage.getItem('access_token');
@@ -275,9 +402,9 @@ const Reports = () => {
                             headers: { 'Authorization': `Bearer ${token}` }
                           }
                         );
-                        
+
                         if (!res.ok) throw new Error('File not available');
-                        
+
                         const blob = await res.blob();
                         const url = URL.createObjectURL(blob);
                         setFileUrl(url);
@@ -293,7 +420,7 @@ const Reports = () => {
                       border: '1px solid rgba(37,99,235,0.2)',
                       borderRadius: 8, padding: '6px 14px',
                       color: '#60A5FA', cursor: 'pointer',
-                      fontSize: '0.8rem', fontWeight: 500,
+                      fontSize: 'clamp(0.72rem, 2.5vw, 0.8rem)', fontWeight: 500,
                       display: 'flex', alignItems: 'center', gap: 6
                     }}
                   >
@@ -303,6 +430,7 @@ const Reports = () => {
                     className="btn btn-primary btn-sm"
                     onClick={() => handleExplain(selectedReport.id)}
                     disabled={loading}
+                    style={{ fontSize: 'clamp(0.72rem, 2.5vw, 0.8rem)' }}
                   >
                     {loading ? <><Loader className="spin" size={14} /> Analyzing…</> : 'Generate Medical Explanation'}
                   </button>
@@ -310,7 +438,11 @@ const Reports = () => {
               </div>
 
               {/* Content */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{
+                flex: 1, overflowY: 'auto',
+                padding: isMobile ? '14px 14px' : 24,
+                display: 'flex', flexDirection: 'column', gap: 16
+              }}>
                 {/* Analysis results */}
                 {analysis && (
                   <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -328,21 +460,24 @@ const Reports = () => {
                           Lab Values ({params.length} parameters)
                         </div>
                         <div style={{ overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                          <table style={{
+                            width: '100%', borderCollapse: 'collapse',
+                            fontSize: isMobile ? '0.72rem' : '0.82rem'
+                          }}>
                             <thead>
                               <tr style={{ borderBottom: '1px solid #2A2D3A' }}>
                                 {['Test', 'Result', 'Reference Range', 'Status'].map(h => (
-                                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#9CA3AF', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                                  <th key={h} style={{ padding: isMobile ? '8px 10px' : '10px 14px', textAlign: 'left', color: '#9CA3AF', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                                 ))}
                               </tr>
                             </thead>
                             <tbody>
                               {params.map((p, i) => (
                                 <tr key={i} style={{ borderBottom: '1px solid rgba(42,45,58,.5)' }}>
-                                  <td style={{ padding: '10px 14px', fontWeight: 500 }}>{p.name || p.test_name || '—'}</td>
-                                  <td style={{ padding: '10px 14px' }}>{p.value}{p.unit ? ` ${p.unit}` : ''}</td>
-                                  <td style={{ padding: '10px 14px', color: '#9CA3AF' }}>{p.reference_range || p.normal_range || '—'}</td>
-                                  <td style={{ padding: '10px 14px' }}><span style={STATUS_STYLE(p.status)}>{p.status || '—'}</span></td>
+                                  <td style={{ padding: isMobile ? '8px 10px' : '10px 14px', fontWeight: 500 }}>{p.name || p.test_name || '—'}</td>
+                                  <td style={{ padding: isMobile ? '8px 10px' : '10px 14px' }}>{p.value}{p.unit ? ` ${p.unit}` : ''}</td>
+                                  <td style={{ padding: isMobile ? '8px 10px' : '10px 14px', color: '#9CA3AF' }}>{p.reference_range || p.normal_range || '—'}</td>
+                                  <td style={{ padding: isMobile ? '8px 10px' : '10px 14px' }}><span style={STATUS_STYLE(p.status)}>{p.status || '—'}</span></td>
                                 </tr>
                               ))}
                             </tbody>
@@ -413,31 +548,315 @@ const Reports = () => {
               </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: '#6B7280', gap: 16 }}>
-              <FileText size={48} style={{ opacity: 0.2 }} />
-              <p>Select a report to view details</p>
+            <div className="empty-state" style={{ flex: 1 }}>
+              <div className="empty-state-icon">👈</div>
+              <h3>Select a report</h3>
+              <p>Choose a report from the list to view its details and AI analysis.</p>
             </div>
           )}
         </div>
       </div>
+
+      {/* ── Compare Modal ────────────────────────────────── */}
+      {compareOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 2000,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          padding: isMobile ? '8px' : '20px', overflowY: 'auto',
+        }} onClick={() => !comparing && setCompareOpen(false)}>
+          <div style={{
+            background: '#1A1D27', border: '1px solid #2A2D3A',
+            borderRadius: isMobile ? 12 : 16,
+            width: '100%', maxWidth: 780,
+            marginTop: isMobile ? 8 : 20,
+            marginBottom: isMobile ? 8 : 20,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.6)',
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Modal Header */}
+            <div style={{
+              padding: isMobile ? '14px 16px' : '20px 24px',
+              borderBottom: '1px solid #2A2D3A',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: '#0F1117', borderRadius: '16px 16px 0 0',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <GitCompare size={20} color="#2563EB" />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '1rem' }}>Compare Reports</div>
+                  <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>AI-powered comparison of two medical reports</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setCompareOpen(false)}
+                disabled={comparing}
+                style={{
+                  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 8, color: '#EF4444', cursor: 'pointer',
+                  padding: '6px 12px', fontSize: '0.8rem', fontWeight: 600,
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div style={{ padding: isMobile ? '14px 14px' : 24 }}>
+
+              {/* ── Report selectors + controls (shown when no result yet) */}
+              {!compareResult && (
+                <>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: isMobile ? 12 : 16,
+                    alignItems: 'flex-start', marginBottom: 20
+                  }}>
+                    <ReportSelector
+                      label="📄 Older Report (Report A)"
+                      selected={compareReport1}
+                      onSelect={setCompareReport1}
+                      reports={reports}
+                      otherSelected={compareReport2}
+                    />
+                    {!isMobile && (
+                      <div style={{ display: 'flex', alignItems: 'center', paddingTop: 36, flexShrink: 0 }}>
+                        <ArrowRight size={20} color="#6B7280" />
+                      </div>
+                    )}
+                    <ReportSelector
+                      label="📄 Newer Report (Report B)"
+                      selected={compareReport2}
+                      onSelect={setCompareReport2}
+                      reports={reports}
+                      otherSelected={compareReport1}
+                    />
+                  </div>
+
+                  {/* Language picker */}
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 8 }}>
+                      🌐 Response Language
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {['english', 'telugu', 'hindi'].map(lang => (
+                        <button
+                          key={lang}
+                          onClick={() => setCompareLanguage(lang)}
+                          style={{
+                            padding: '7px 16px', borderRadius: 8,
+                            border: compareLanguage === lang ? '1.5px solid #2563EB' : '1px solid #2A2D3A',
+                            background: compareLanguage === lang ? 'rgba(37,99,235,0.15)' : 'transparent',
+                            color: compareLanguage === lang ? '#60A5FA' : '#9CA3AF',
+                            cursor: 'pointer', fontSize: '0.8rem',
+                            fontWeight: compareLanguage === lang ? 600 : 400,
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {lang === 'telugu' ? '🇮🇳 Telugu' : lang === 'hindi' ? '🇮🇳 Hindi' : '🇬🇧 English'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Selection summary */}
+                  {(compareReport1 || compareReport2) && (
+                    <div style={{
+                      background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.15)',
+                      borderRadius: 10, padding: '12px 16px', marginBottom: 20,
+                      display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+                    }}>
+                      <span style={{ color: compareReport1 ? '#60A5FA' : '#6B7280', fontSize: '0.82rem', fontWeight: 600 }}>
+                        {compareReport1 ? `A: ${compareReport1.filename}` : 'Select Report A'}
+                      </span>
+                      <ArrowRight size={14} color="#6B7280" />
+                      <span style={{ color: compareReport2 ? '#60A5FA' : '#6B7280', fontSize: '0.82rem', fontWeight: 600 }}>
+                        {compareReport2 ? `B: ${compareReport2.filename}` : 'Select Report B'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Compare button */}
+                  <button
+                    onClick={handleCompare}
+                    disabled={!compareReport1 || !compareReport2 || comparing}
+                    style={{
+                      width: '100%', padding: '13px',
+                      background: compareReport1 && compareReport2 && !comparing
+                        ? '#2563EB' : 'rgba(37,99,235,0.3)',
+                      border: 'none', borderRadius: 10, color: '#fff',
+                      cursor: compareReport1 && compareReport2 && !comparing ? 'pointer' : 'not-allowed',
+                      fontWeight: 700, fontSize: '0.9rem',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {comparing ? (
+                      <>
+                        <div style={{
+                          width: 18, height: 18,
+                          border: '2px solid rgba(255,255,255,0.3)',
+                          borderTop: '2px solid #fff',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite',
+                        }} />
+                        AI is comparing reports...
+                      </>
+                    ) : (
+                      <><GitCompare size={18} /> Compare These Reports</>
+                    )}
+                  </button>
+                </>
+              )}
+
+              {/* ── Comparison Result */}
+              {compareResult && (
+                <div>
+                  {/* Result header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '1.2rem' }}>📊</span>
+                      <span style={{ color: '#F8F9FA', fontWeight: 700, fontSize: '0.95rem' }}>Comparison Result</span>
+                    </div>
+                    <button
+                      onClick={() => { setCompareResult(null); setCompareReport1(null); setCompareReport2(null); }}
+                      style={{
+                        background: 'rgba(107,114,128,0.1)', border: '1px solid #2A2D3A',
+                        borderRadius: 8, color: '#9CA3AF', cursor: 'pointer',
+                        padding: '6px 14px', fontSize: '0.8rem',
+                      }}
+                    >
+                      ← Compare Again
+                    </button>
+                  </div>
+
+                  {/* A vs B filename labels */}
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{
+                      background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.2)',
+                      borderRadius: 8, padding: '6px 14px',
+                      fontSize: '0.78rem', color: '#60A5FA', fontWeight: 600,
+                    }}>
+                      A: {compareReport1?.filename}
+                    </div>
+                    <ArrowRight size={16} color="#6B7280" />
+                    <div style={{
+                      background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
+                      borderRadius: 8, padding: '6px 14px',
+                      fontSize: '0.78rem', color: '#10B981', fontWeight: 600,
+                    }}>
+                      B: {compareReport2?.filename}
+                    </div>
+                  </div>
+
+                  {/* Trend badge */}
+                  {compareResult.trend && (
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: '8px 16px', borderRadius: 10, marginBottom: 16,
+                      background: compareResult.trend === 'improving'
+                        ? 'rgba(16,185,129,0.1)'
+                        : compareResult.trend === 'worsening'
+                          ? 'rgba(239,68,68,0.1)'
+                          : 'rgba(245,158,11,0.1)',
+                      border: `1px solid ${compareResult.trend === 'improving' ? 'rgba(16,185,129,0.25)'
+                          : compareResult.trend === 'worsening' ? 'rgba(239,68,68,0.25)'
+                            : 'rgba(245,158,11,0.25)'
+                        }`,
+                      color: compareResult.trend === 'improving' ? '#10B981'
+                        : compareResult.trend === 'worsening' ? '#EF4444'
+                          : '#F59E0B',
+                      fontWeight: 700, fontSize: '0.85rem',
+                    }}>
+                      {compareResult.trend === 'improving' ? '📈 Improving'
+                        : compareResult.trend === 'worsening' ? '📉 Worsening'
+                          : '➡️ Stable'}
+                    </div>
+                  )}
+
+                  {/* Full comparison markdown */}
+                  <div style={{
+                    background: '#0F1117', border: '1px solid #2A2D3A',
+                    borderRadius: 12, padding: 20, maxHeight: 420, overflowY: 'auto',
+                  }}>
+                    <div className="markdown-content">
+                      <ReactMarkdown>
+                        {compareResult.comparison
+                          || compareResult.summary
+                          || compareResult.analysis
+                          || JSON.stringify(compareResult, null, 2)}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+
+                  {/* Key changes list (optional — depends on backend response) */}
+                  {compareResult.key_changes && compareResult.key_changes.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, marginBottom: 10 }}>KEY CHANGES</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {compareResult.key_changes.map((change, i) => (
+                          <div key={i} style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 10,
+                            padding: '10px 14px',
+                            background: 'rgba(255,255,255,0.03)',
+                            borderRadius: 8, border: '1px solid #2A2D3A',
+                          }}>
+                            <span style={{
+                              flexShrink: 0,
+                              color: typeof change === 'object' && change.direction === 'up' ? '#EF4444'
+                                : typeof change === 'object' && change.direction === 'down' ? '#10B981'
+                                  : '#9CA3AF',
+                            }}>
+                              {typeof change === 'object' && change.direction === 'up' ? '↑'
+                                : typeof change === 'object' && change.direction === 'down' ? '↓'
+                                  : '•'}
+                            </span>
+                            <span style={{ color: '#D1D5DB', fontSize: '0.83rem', lineHeight: 1.5 }}>
+                              {typeof change === 'string'
+                                ? change
+                                : change.description || change.text || JSON.stringify(change)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Disclaimer */}
+                  <div style={{
+                    marginTop: 16, padding: '10px 14px',
+                    background: 'rgba(107,114,128,0.05)',
+                    borderRadius: 8, fontSize: '0.72rem', color: '#6B7280', lineHeight: 1.5,
+                  }}>
+                    ⚕️ This comparison is AI-generated for informational purposes only. Consult your doctor for clinical decisions.
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
 
       {viewerOpen && viewerReport && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 3000,
           background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'flex-start',
-          justifyContent: 'center', padding: '20px',
+          justifyContent: 'center', padding: isMobile ? '8px' : '20px',
           overflowY: 'auto'
         }} onClick={closeViewer}>
           <div style={{
             background: '#1A1D27',
             border: '1px solid #2A2D3A',
-            borderRadius: 16, width: '100%', maxWidth: 900,
-            marginTop: 20, marginBottom: 20,
+            borderRadius: isMobile ? 10 : 16,
+            width: '100%', maxWidth: 900,
+            marginTop: isMobile ? 0 : 20,
+            marginBottom: isMobile ? 0 : 20,
             overflow: 'hidden',
             boxShadow: '0 25px 80px rgba(0,0,0,0.6)'
           }} onClick={e => e.stopPropagation()}>
-            
+
             {/* Viewer Header */}
             <div style={{
               padding: '16px 20px',
@@ -461,7 +880,7 @@ const Reports = () => {
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <a
                   href={fileUrl}
                   download={viewerReport?.filename}
@@ -469,7 +888,8 @@ const Reports = () => {
                     background: 'rgba(37,99,235,0.1)',
                     border: '1px solid rgba(37,99,235,0.2)',
                     borderRadius: 8, color: '#60A5FA',
-                    padding: '6px 12px', fontSize: '0.8rem',
+                    padding: isMobile ? '5px 8px' : '6px 12px',
+                    fontSize: isMobile ? '0.72rem' : '0.8rem',
                     textDecoration: 'none', display: 'inline-flex',
                     alignItems: 'center', gap: 6,
                     pointerEvents: fileUrl ? 'auto' : 'none',
@@ -484,8 +904,10 @@ const Reports = () => {
                     background: 'rgba(239,68,68,0.1)',
                     border: '1px solid rgba(239,68,68,0.2)',
                     borderRadius: 8, color: '#EF4444',
-                    cursor: 'pointer', padding: '6px 12px',
-                    fontSize: '0.8rem', fontWeight: 600
+                    cursor: 'pointer',
+                    padding: isMobile ? '5px 8px' : '6px 12px',
+                    fontSize: isMobile ? '0.72rem' : '0.8rem',
+                    fontWeight: 600
                   }}
                 >
                   ✕ Close
@@ -495,7 +917,7 @@ const Reports = () => {
 
             {/* File Viewer Content */}
             <div style={{ padding: 0 }}>
-              
+
               {fileLoading && (
                 <div style={{
                   display: 'flex', alignItems: 'center',
@@ -516,47 +938,47 @@ const Reports = () => {
               {!fileLoading && fileUrl && (
                 <>
                   {/* PDF Viewer */}
-                  {(fileType === 'pdf' || 
+                  {(fileType === 'pdf' ||
                     viewerReport?.filename?.toLowerCase().endsWith('.pdf')) && (
-                    <embed
-                      src={fileUrl}
-                      type="application/pdf"
-                      style={{
-                        width: '100%',
-                        height: '80vh',
-                        minHeight: 600,
-                        border: 'none',
-                        display: 'block'
-                      }}
-                    />
-                  )}
-
-                  {/* Image Viewer */}
-                  {(fileType === 'image' || 
-                    fileType === 'jpg' || 
-                    fileType === 'jpeg' || 
-                    fileType === 'png' ||
-                    ['jpg','jpeg','png'].includes(
-                      viewerReport?.filename?.split('.').pop()?.toLowerCase()
-                    )) && (
-                    <div style={{
-                      padding: 20, display: 'flex',
-                      justifyContent: 'center', alignItems: 'flex-start',
-                      background: '#0F1117', minHeight: 400,
-                      overflowY: 'auto'
-                    }}>
-                      <img
+                      <embed
                         src={fileUrl}
-                        alt={viewerReport?.filename}
+                        type="application/pdf"
                         style={{
-                          maxWidth: '100%',
-                          height: 'auto',
-                          borderRadius: 8,
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+                          width: '100%',
+                          height: isMobile ? '70vh' : '80vh',
+                          minHeight: isMobile ? 400 : 600,
+                          border: 'none',
+                          display: 'block'
                         }}
                       />
-                    </div>
-                  )}
+                    )}
+
+                  {/* Image Viewer */}
+                  {(fileType === 'image' ||
+                    fileType === 'jpg' ||
+                    fileType === 'jpeg' ||
+                    fileType === 'png' ||
+                    ['jpg', 'jpeg', 'png'].includes(
+                      viewerReport?.filename?.split('.').pop()?.toLowerCase()
+                    )) && (
+                      <div style={{
+                        padding: 20, display: 'flex',
+                        justifyContent: 'center', alignItems: 'flex-start',
+                        background: '#0F1117', minHeight: 400,
+                        overflowY: 'auto'
+                      }}>
+                        <img
+                          src={fileUrl}
+                          alt={viewerReport?.filename}
+                          style={{
+                            maxWidth: '100%',
+                            height: 'auto',
+                            borderRadius: 8,
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+                          }}
+                        />
+                      </div>
+                    )}
                 </>
               )}
 
@@ -567,8 +989,10 @@ const Reports = () => {
                   height: 300, gap: 12
                 }}>
                   <span style={{ fontSize: '2rem' }}>📄</span>
-                  <p style={{ color: '#9CA3AF', textAlign: 'center',
-                    fontSize: '0.875rem', maxWidth: 300 }}>
+                  <p style={{
+                    color: '#9CA3AF', textAlign: 'center',
+                    fontSize: '0.875rem', maxWidth: 300
+                  }}>
                     File not available for viewing.
                     This report was uploaded before file storage was enabled.
                   </p>
@@ -587,7 +1011,20 @@ const Reports = () => {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         div:hover > .delete-report-btn-inline { opacity: 1 !important; }
         @media (max-width: 768px) {
-          div[style*="grid-template-columns: 300px"] { grid-template-columns: 1fr !important; }
+          .delete-report-btn-inline {
+            opacity: 1 !important;
+          }
+          .report-filename {
+            font-size: 0.75rem !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .badge {
+            font-size: 0.65rem !important;
+          }
+          .markdown-content {
+            font-size: 0.82rem !important;
+          }
         }
       `}</style>
     </div>

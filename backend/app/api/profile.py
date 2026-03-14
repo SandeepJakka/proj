@@ -100,35 +100,87 @@ def update_profile_sharing(data: ProfileSharingUpdate, db: Session = Depends(get
 @router.get("/public/{username}")
 def get_public_profile(username: str, db: Session = Depends(get_db)):
     import json
-    
-    user = db.query(models.User).filter(models.User.username == username).first()
+    from app.db.models_reports import Report
+    from app.db import crud as db_crud
+
+    user = db.query(models.User).filter(
+        models.User.username == username
+    ).first()
     if not user or not user.profile_public:
         raise HTTPException(status_code=404, detail="Profile not found")
-    
-    # Get public fields
+
     public_fields = []
     if user.public_fields:
         try:
-            public_fields = json.loads(user.public_fields) if isinstance(user.public_fields, str) else user.public_fields
+            public_fields = json.loads(user.public_fields) \
+                if isinstance(user.public_fields, str) \
+                else user.public_fields
         except:
             public_fields = []
-    
-    # Get health profile
-    profile = crud.get_health_profile(db, user_id=user.id)
-    
+
+    profile = db_crud.get_health_profile(db, user_id=user.id)
     result = {"username": username}
-    
-    # Only include allowed fields
-    allowed = {"full_name", "age", "gender", "blood_type", "known_conditions", "allergies", "activity_level"}
-    
+
+    allowed_profile = {
+        "full_name", "age", "gender", "blood_type",
+        "known_conditions", "allergies", "activity_level"
+    }
+
     if "full_name" in public_fields and user.full_name:
         result["full_name"] = user.full_name
-    
+
     if profile:
         for field in public_fields:
-            if field in allowed and hasattr(profile, field):
+            if field in allowed_profile and hasattr(profile, field):
                 value = getattr(profile, field)
                 if value:
                     result[field] = value
-    
+
+    # Health summary — BMI + conditions overview
+    if "health_summary" in public_fields and profile:
+        summary = {}
+        if profile.weight_kg and profile.height_cm and profile.height_cm > 0:
+            bmi = round(
+                profile.weight_kg / ((profile.height_cm / 100) ** 2), 1
+            )
+            if bmi < 18.5:
+                bmi_category = "Underweight"
+            elif bmi < 25:
+                bmi_category = "Normal weight"
+            elif bmi < 30:
+                bmi_category = "Overweight"
+            else:
+                bmi_category = "Obese"
+            summary["bmi"] = bmi
+            summary["bmi_category"] = bmi_category
+        if profile.known_conditions:
+            summary["conditions"] = profile.known_conditions[:200]
+        if profile.activity_level:
+            summary["activity_level"] = profile.activity_level
+        if summary:
+            result["health_summary"] = summary
+
+    # Recent reports — last 5, summaries only (200 chars max)
+    if "reports" in public_fields:
+        reports = db.query(Report).filter(
+            Report.user_id == user.id
+        ).order_by(Report.created_at.desc()).limit(5).all()
+
+        report_list = []
+        for report in reports:
+            extract = db_crud.get_report_extract(db, report.id)
+            report_list.append({
+                "filename": report.filename,
+                "report_type": report.report_type or "Medical Report",
+                "date": report.created_at.isoformat() \
+                    if report.created_at else None,
+                "summary": (extract.summary_text[:200] + "...") \
+                    if extract and extract.summary_text \
+                    and len(extract.summary_text) > 200 \
+                    else (extract.summary_text if extract else None)
+            })
+        if report_list:
+            result["reports"] = report_list
+
     return result
+
