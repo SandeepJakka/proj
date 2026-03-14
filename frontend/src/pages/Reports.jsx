@@ -27,8 +27,22 @@ const Reports = () => {
   const [viewMode, setViewMode] = useState('list');
   const [trends, setTrends] = useState(null);
   const [loadingTrends, setLoadingTrends] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerReport, setViewerReport] = useState(null);
+  const [fileUrl, setFileUrl] = useState(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileType, setFileType] = useState(null);
 
   useEffect(() => { fetchReports(); }, []);
+
+  const closeViewer = () => {
+    setViewerOpen(false);
+    if (fileUrl) {
+      URL.revokeObjectURL(fileUrl);
+      setFileUrl(null);
+    }
+    setViewerReport(null);
+  };
 
   const fetchReports = async () => {
     try {
@@ -243,13 +257,56 @@ const Reports = () => {
                     {selectedReport.file_type || 'document'}
                   </span>
                 </div>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => handleExplain(selectedReport.id)}
-                  disabled={loading}
-                >
-                  {loading ? <><Loader className="spin" size={14} /> Analyzing…</> : 'Generate Medical Explanation'}
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={async () => {
+                      setViewerReport(selectedReport);
+                      setViewerOpen(true);
+                      setFileUrl(null);
+                      setFileLoading(true);
+                      setFileType(selectedReport.file_type);
+                      
+                      try {
+                        // Fetch the file as a blob with auth token
+                        const token = localStorage.getItem('access_token');
+                        const res = await fetch(
+                          `http://localhost:8000/api/reports/${selectedReport.id}/file`,
+                          {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                          }
+                        );
+                        
+                        if (!res.ok) throw new Error('File not available');
+                        
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        setFileUrl(url);
+                      } catch (err) {
+                        toast.error('Could not load file. It may have been uploaded before this feature.');
+                        setFileUrl(null);
+                      } finally {
+                        setFileLoading(false);
+                      }
+                    }}
+                    style={{
+                      background: 'rgba(37,99,235,0.1)',
+                      border: '1px solid rgba(37,99,235,0.2)',
+                      borderRadius: 8, padding: '6px 14px',
+                      color: '#60A5FA', cursor: 'pointer',
+                      fontSize: '0.8rem', fontWeight: 500,
+                      display: 'flex', alignItems: 'center', gap: 6
+                    }}
+                  >
+                    👁 View Report
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleExplain(selectedReport.id)}
+                    disabled={loading}
+                  >
+                    {loading ? <><Loader className="spin" size={14} /> Analyzing…</> : 'Generate Medical Explanation'}
+                  </button>
+                </div>
               </div>
 
               {/* Content */}
@@ -363,6 +420,167 @@ const Reports = () => {
           )}
         </div>
       </div>
+
+      {viewerOpen && viewerReport && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 3000,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'center', padding: '20px',
+          overflowY: 'auto'
+        }} onClick={closeViewer}>
+          <div style={{
+            background: '#1A1D27',
+            border: '1px solid #2A2D3A',
+            borderRadius: 16, width: '100%', maxWidth: 900,
+            marginTop: 20, marginBottom: 20,
+            overflow: 'hidden',
+            boxShadow: '0 25px 80px rgba(0,0,0,0.6)'
+          }} onClick={e => e.stopPropagation()}>
+            
+            {/* Viewer Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid #2A2D3A',
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#0F1117', position: 'sticky', top: 0, zIndex: 1
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.2rem' }}>
+                  {viewerReport.file_type === 'pdf' ? '📄' : '🖼'}
+                </span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '0.9rem' }}>
+                    {viewerReport.filename}
+                  </div>
+                  <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                    Uploaded {new Date(viewerReport.created_at).toLocaleDateString('en-IN', {
+                      day: 'numeric', month: 'long', year: 'numeric'
+                    })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <a
+                  href={fileUrl}
+                  download={viewerReport?.filename}
+                  style={{
+                    background: 'rgba(37,99,235,0.1)',
+                    border: '1px solid rgba(37,99,235,0.2)',
+                    borderRadius: 8, color: '#60A5FA',
+                    padding: '6px 12px', fontSize: '0.8rem',
+                    textDecoration: 'none', display: 'inline-flex',
+                    alignItems: 'center', gap: 6,
+                    pointerEvents: fileUrl ? 'auto' : 'none',
+                    opacity: fileUrl ? 1 : 0.4
+                  }}
+                >
+                  ⬇ Download
+                </a>
+                <button
+                  onClick={closeViewer}
+                  style={{
+                    background: 'rgba(239,68,68,0.1)',
+                    border: '1px solid rgba(239,68,68,0.2)',
+                    borderRadius: 8, color: '#EF4444',
+                    cursor: 'pointer', padding: '6px 12px',
+                    fontSize: '0.8rem', fontWeight: 600
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* File Viewer Content */}
+            <div style={{ padding: 0 }}>
+              
+              {fileLoading && (
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', height: 400,
+                  flexDirection: 'column', gap: 12
+                }}>
+                  <div style={{
+                    width: 40, height: 40, border: '3px solid #2A2D3A',
+                    borderTop: '3px solid #2563EB', borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <span style={{ color: '#9CA3AF', fontSize: '0.85rem' }}>
+                    Loading file...
+                  </span>
+                </div>
+              )}
+
+              {!fileLoading && fileUrl && (
+                <>
+                  {/* PDF Viewer */}
+                  {(fileType === 'pdf' || 
+                    viewerReport?.filename?.toLowerCase().endsWith('.pdf')) && (
+                    <embed
+                      src={fileUrl}
+                      type="application/pdf"
+                      style={{
+                        width: '100%',
+                        height: '80vh',
+                        minHeight: 600,
+                        border: 'none',
+                        display: 'block'
+                      }}
+                    />
+                  )}
+
+                  {/* Image Viewer */}
+                  {(fileType === 'image' || 
+                    fileType === 'jpg' || 
+                    fileType === 'jpeg' || 
+                    fileType === 'png' ||
+                    ['jpg','jpeg','png'].includes(
+                      viewerReport?.filename?.split('.').pop()?.toLowerCase()
+                    )) && (
+                    <div style={{
+                      padding: 20, display: 'flex',
+                      justifyContent: 'center', alignItems: 'flex-start',
+                      background: '#0F1117', minHeight: 400,
+                      overflowY: 'auto'
+                    }}>
+                      <img
+                        src={fileUrl}
+                        alt={viewerReport?.filename}
+                        style={{
+                          maxWidth: '100%',
+                          height: 'auto',
+                          borderRadius: 8,
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+                        }}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!fileLoading && !fileUrl && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  height: 300, gap: 12
+                }}>
+                  <span style={{ fontSize: '2rem' }}>📄</span>
+                  <p style={{ color: '#9CA3AF', textAlign: 'center',
+                    fontSize: '0.875rem', maxWidth: 300 }}>
+                    File not available for viewing.
+                    This report was uploaded before file storage was enabled.
+                  </p>
+                  <p style={{ color: '#6B7280', fontSize: '0.75rem' }}>
+                    Re-upload the report to enable file viewing.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .spin { animation: spin 1s linear infinite; }

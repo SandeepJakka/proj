@@ -1,6 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import json
+import os
 
 from app.db.deps import get_db, get_current_user
 from app.db import crud, models
@@ -92,6 +94,9 @@ async def analyze_report_logged_in(
     file_bytes = await validate_upload_file(file)
     ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
     
+    # Save file locally for viewing
+    local_path, _ = await save_upload_bytes(file_bytes, file.filename)
+    
     # Upload to S3
     from app.services.s3_service import upload_report_to_s3
     s3_key = upload_report_to_s3(file_bytes, file.filename, current_user.id)
@@ -115,6 +120,7 @@ async def analyze_report_logged_in(
     report = crud.create_report(db, file.filename, ext, user_id=current_user.id)
     report.s3_key = s3_key
     report.report_type = report_type
+    report.local_path = local_path
     db.commit()
     
     # Store extraction results
@@ -147,6 +153,55 @@ async def analyze_report_logged_in(
     return result
 
 # ── KEEPING EXISTING ENDPOINTS TO PREVENT BREAKING CHANGES ──
+
+@router.get("/{report_id}/file")
+def get_report_file(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    from app.db.models_reports import Report
+    
+    report = db.query(Report).filter(
+        Report.id == report_id,
+        Report.user_id == current_user.id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    # Try local file first
+    if report.local_path and os.path.exists(report.local_path):
+        ext = report.filename.split('.')[-1].lower() \
+          if '.' in report.filename else 'bin'
+        
+        media_type_map = {
+            'pdf': 'application/pdf',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+        }
+        media_type = media_type_map.get(ext, 'application/octet-stream')
+        
+        return FileResponse(
+            path=report.local_path,
+            media_type=media_type,
+            filename=report.filename,
+            headers={"Cache-Control": "private, max-age=3600"}
+        )
+    
+    # Try S3 presigned URL redirect
+    if report.s3_key:
+        from app.services.s3_service import get_presigned_url
+        url = get_presigned_url(report.s3_key)
+        if url:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=url)
+    
+    raise HTTPException(
+        status_code=404, 
+        detail="File not available. Please re-upload this report."
+    )
 
 @router.post("/upload")
 async def upload_report(

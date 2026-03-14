@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, MessageSquare, ScanLine,
-  MapPin, Lightbulb, Activity, UserCircle, LogOut
+  MapPin, Lightbulb, Activity, UserCircle, LogOut, Bell
 } from 'lucide-react';
 
 const NAV = [
@@ -12,6 +12,7 @@ const NAV = [
   { label: 'Chat AI', path: '/chat', icon: <MessageSquare size={18} /> },
   { label: 'Find Doctors', path: '/map', icon: <MapPin size={18} /> },
   { label: 'Health Tips', path: '/tips', icon: <Lightbulb size={18} /> },
+  { label: 'Reminders', path: '/reminders', icon: <Bell size={18} /> },
   { label: 'Lifestyle', path: '/lifestyle', icon: <Activity size={18} /> },
   { label: 'Profile', path: '/profile', icon: <UserCircle size={18} /> },
 ];

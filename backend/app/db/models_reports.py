@@ -11,6 +11,7 @@ class Report(Base):
     file_type = Column(String)  # pdf | image
     s3_key = Column(String, nullable=True)  # S3 object key for file storage
     report_type = Column(String, nullable=True)  # blood_test, xray, prescription etc
+    local_path = Column(String, nullable=True)  # local file path for viewing
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class ReportExtract(Base):

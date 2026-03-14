@@ -18,6 +18,8 @@ import Tips from './pages/Tips';
 import Reports from './pages/Reports';
 import Lifestyle from './pages/Lifestyle';
 import Profile from './pages/Profile';
+import Reminders from './pages/Reminders';
+import PublicProfile from './pages/PublicProfile';
 
 const isLoggedIn = () => !!localStorage.getItem('access_token');
 
@@ -50,6 +52,18 @@ function App() {
           <Route path="/reports" element={<Protected><AuthLayout><Reports /></AuthLayout></Protected>} />
           <Route path="/lifestyle" element={<Protected><AuthLayout><Lifestyle /></AuthLayout></Protected>} />
           <Route path="/profile" element={<Protected><AuthLayout><Profile /></AuthLayout></Protected>} />
+
+          {/* Reminders - protected */}
+          <Route path="/reminders" element={
+            <Protected>
+              <AuthLayout>
+                <Reminders />
+              </AuthLayout>
+            </Protected>
+          } />
+
+          {/* Public profile - no auth needed */}
+          <Route path="/profile/:username" element={<PublicProfile />} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />

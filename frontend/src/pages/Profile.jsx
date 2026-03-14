@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { getProfile, updateProfile } from '../services/api';
-import { User, ShieldCheck, Activity, Save, Loader } from 'lucide-react';
+import { getProfile, updateProfile, getProfileSharing, updateProfileSharing } from '../services/api';
+import { User, ShieldCheck, Activity, Save, Loader, Link2, Copy, Eye, EyeOff } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
+
+const SHAREABLE_FIELDS = [
+  { key: 'full_name', label: 'Full Name' },
+  { key: 'age', label: 'Age' },
+  { key: 'gender', label: 'Gender' },
+  { key: 'blood_type', label: 'Blood Type' },
+  { key: 'known_conditions', label: 'Known Conditions' },
+  { key: 'allergies', label: 'Allergies' },
+  { key: 'activity_level', label: 'Activity Level' },
+];
 
 const Profile = () => {
     const [profile, setProfile] = useState({
@@ -16,6 +27,13 @@ const Profile = () => {
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [sharing, setSharing] = useState({
+        username: '',
+        profile_public: false,
+        public_fields: []
+    });
+    const [sharingLoaded, setSharingLoaded] = useState(false);
+    const [savingSharing, setSavingSharing] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -29,6 +47,19 @@ const Profile = () => {
             }
         };
         fetchProfile();
+
+        getProfileSharing()
+            .then(r => {
+                if (r.data) {
+                    setSharing({
+                        username: r.data.username || '',
+                        profile_public: r.data.profile_public || false,
+                        public_fields: r.data.public_fields || []
+                    });
+                }
+            })
+            .catch(() => {})
+            .finally(() => setSharingLoaded(true));
     }, []);
 
     const handleChange = (e) => {
@@ -41,11 +72,27 @@ const Profile = () => {
         setSaving(true);
         try {
             await updateProfile(profile);
-            alert("Profile updated successfully!");
+            toast.success("Profile saved successfully!");
         } catch (err) {
-            alert("Update failed.");
+            toast.error("Failed to save profile. Please try again.");
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleSaveSharing = async () => {
+        if (sharing.username && !/^[a-zA-Z0-9_]{3,20}$/.test(sharing.username)) {
+            toast.error('Username must be 3-20 chars, letters, numbers, underscore only');
+            return;
+        }
+        setSavingSharing(true);
+        try {
+            await updateProfileSharing(sharing);
+            toast.success('Sharing settings saved!');
+        } catch (err) {
+            toast.error(err.response?.data?.detail || 'Failed to save sharing settings');
+        } finally {
+            setSavingSharing(false);
         }
     };
 
@@ -53,6 +100,7 @@ const Profile = () => {
 
     return (
         <div className="profile-page">
+            <Toaster position="top-right" />
             <header className="page-header">
                 <h1>Health Identity</h1>
                 <p>Manage your medical context for more accurate AI reasoning.</p>
@@ -131,6 +179,141 @@ const Profile = () => {
                                 <label>Allergies</label>
                                 <textarea name="allergies" value={profile.allergies || ''} onChange={handleChange} placeholder="e.g. Penicillin, Peanuts..." />
                             </div>
+                        </div>
+                    </div>
+
+                    <div className="form-section card">
+                        <div className="section-title">
+                            <Link2 size={20} color="#10B981" />
+                            <h2>Share Your Profile</h2>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            <div className="input-field">
+                                <label>Username</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. sandeep_health"
+                                    value={sharing.username}
+                                    onChange={e => setSharing(p => ({...p, username: e.target.value}))}
+                                />
+                                {sharing.username && (
+                                    <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>
+                                        Your profile link: healthora.app/profile/{sharing.username}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center',
+                                justifyContent: 'space-between', padding: '12px 16px',
+                                background: 'rgba(255,255,255,0.03)', borderRadius: 8,
+                                border: '1px solid #2A2D3A' }}>
+                                <div>
+                                    <div style={{ color: '#F8F9FA', fontWeight: 600,
+                                        fontSize: '0.9rem' }}>Make Profile Public</div>
+                                    <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                                        Allow others to view your health profile
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSharing(p => ({...p, profile_public: !p.profile_public}))}
+                                    style={{
+                                        width: 44, height: 24, borderRadius: 12, border: 'none',
+                                        cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                                        background: sharing.profile_public ? '#2563EB' : '#374151'
+                                    }}
+                                >
+                                    <div style={{
+                                        width: 18, height: 18, borderRadius: '50%',
+                                        background: '#fff', position: 'absolute', top: 3,
+                                        transition: 'left 0.2s',
+                                        left: sharing.profile_public ? 23 : 3
+                                    }} />
+                                </button>
+                            </div>
+
+                            {sharing.profile_public && (
+                                <div>
+                                    <label style={{ color: '#9CA3AF', fontSize: '0.8rem',
+                                        fontWeight: 600, display: 'block', marginBottom: 10 }}>
+                                        Choose what to share:
+                                    </label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        {SHAREABLE_FIELDS.map(field => (
+                                            <label key={field.key} style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                cursor: 'pointer', padding: '8px 12px',
+                                                background: 'rgba(255,255,255,0.02)',
+                                                borderRadius: 8, border: '1px solid #2A2D3A'
+                                            }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={sharing.public_fields.includes(field.key)}
+                                                    onChange={e => {
+                                                        if (e.target.checked) {
+                                                            setSharing(p => ({
+                                                                ...p,
+                                                                public_fields: [...p.public_fields, field.key]
+                                                            }));
+                                                        } else {
+                                                            setSharing(p => ({
+                                                                ...p,
+                                                                public_fields: p.public_fields.filter(f => f !== field.key)
+                                                            }));
+                                                        }
+                                                    }}
+                                                    style={{ accentColor: '#2563EB' }}
+                                                />
+                                                <span style={{ color: '#F8F9FA', fontSize: '0.875rem' }}>
+                                                    {field.label}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {sharing.username && sharing.profile_public && (
+                                <div style={{
+                                    background: 'rgba(16,185,129,0.08)',
+                                    border: '1px solid rgba(16,185,129,0.2)',
+                                    borderRadius: 8, padding: '12px 16px',
+                                    display: 'flex', alignItems: 'center',
+                                    justifyContent: 'space-between', gap: 8
+                                }}>
+                                    <span style={{ color: '#10B981', fontSize: '0.8rem', fontWeight: 500 }}>
+                                        healthora.app/profile/{sharing.username}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(
+                                                `http://localhost:5173/profile/${sharing.username}`
+                                            );
+                                            toast.success('Link copied!');
+                                        }}
+                                        style={{ background: 'none', border: 'none',
+                                            color: '#10B981', cursor: 'pointer' }}
+                                    >
+                                        <Copy size={16} />
+                                    </button>
+                                </div>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={handleSaveSharing}
+                                disabled={savingSharing}
+                                style={{
+                                    background: '#10B981', color: '#fff', border: 'none',
+                                    borderRadius: 10, padding: '12px 24px', fontWeight: 600,
+                                    cursor: savingSharing ? 'not-allowed' : 'pointer',
+                                    opacity: savingSharing ? 0.7 : 1, alignSelf: 'flex-start'
+                                }}
+                            >
+                                {savingSharing ? 'Saving...' : '💾 Save Sharing Settings'}
+                            </button>
                         </div>
                     </div>
 
