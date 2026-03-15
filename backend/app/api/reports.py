@@ -239,21 +239,21 @@ async def explain_report(report_id: int, db: Session = Depends(get_db), current_
         except (json.JSONDecodeError, TypeError):
             medical = {"explanation": extract.summary_text or "", "confidence": "medium"}
     else:
-        # Use Groq API to generate explanation
+        # Use already-decrypted summary_text from the extract object
+        summary = extract.summary_text or ""
+        if not summary:
+            raise HTTPException(status_code=422, detail="Report has no extractable text. Please re-upload.")
+
         from app.services.llm_service import medical_llm_response
         system_prompt = "You are a medical report analyst explaining results to patients. Use simple language and explain all medical terms. Structure your response clearly with sections and bullet points. Make it easy to understand for non-medical people."
-        user_prompt = f"Analyze this medical report and explain it in simple terms:\n\n{extract.summary_text}\n\nExplain what each medical term means and what the results indicate for the patient's health. Use clear sections and bullet points."
+        user_prompt = f"Analyze this medical report and explain it in simple terms:\n\n{summary}\n\nExplain what each medical term means and what the results indicate for the patient's health. Use clear sections and bullet points."
         
         explanation = await medical_llm_response([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
         medical = {"explanation": explanation, "confidence": "high"}
         crud.update_report_analysis(db, report_id, medical)
 
-    explanation = f"{medical.get('explanation', '')}"
-    if medical.get('confidence'):
-        explanation += f"\n\nConfidence: {medical['confidence']}"
-    
     return {
-        "explanation": explanation + medical_disclaimer(),
+        "explanation": medical.get('explanation', '') + medical_disclaimer(),
         "confidence": medical.get("confidence", "medium"),
         "structured_data": structured_data,
         "findings": medical.get("findings", []),
@@ -382,3 +382,225 @@ def get_reports_by_type(report_type: str, db: Session = Depends(get_db), current
         })
     
     return {"reports": result, "count": len(result)}
+
+@router.post("/{report_id}/second-opinion")
+async def get_second_opinion(
+    report_id: int,
+    language: str = "english",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    AI second opinion on a medical report.
+    Gives independent analysis with AP/India context.
+    """
+    from app.services.llm_service import medical_llm_response
+
+    report = db.query(models.Report).filter(
+        models.Report.id == report_id,
+        models.Report.user_id == current_user.id
+    ).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    extract = crud.get_report_extract(db, report_id)
+    if not extract or not extract.summary_text:
+        raise HTTPException(
+            status_code=422,
+            detail="Report has no analysis yet. Please generate explanation first."
+        )
+
+    profile = crud.get_health_profile(db, current_user.id)
+    profile_ctx = ""
+    if profile:
+        profile_ctx = f"""
+Patient: {profile.age}yo {profile.gender}
+Conditions: {profile.known_conditions or 'None'}
+Allergies: {profile.allergies or 'None'}
+Blood Type: {profile.blood_type or 'Unknown'}
+"""
+
+    system_prompt = """You are an experienced senior doctor in India
+providing a second opinion on a medical report.
+Be honest, thorough, and focused on patient benefit.
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "overall_assessment": "Your overall independent assessment in 2-3 sentences",
+  "agree_with": [
+    "Finding you agree with"
+  ],
+  "concerns": [
+    {
+      "finding": "Specific finding that needs attention",
+      "reason": "Why this is concerning",
+      "severity": "low|medium|high"
+    }
+  ],
+  "unusual_findings": [
+    "Anything unusual worth a second look"
+  ],
+  "questions_for_doctor": [
+    "Important question patient should ask their doctor"
+  ],
+  "additional_tests": [
+    "Additional test worth considering"
+  ],
+  "specialist_referral": {
+    "needed": true or false,
+    "specialist": "Type of specialist if needed",
+    "reason": "Why referral is recommended"
+  },
+  "lifestyle_advice": [
+    "Practical lifestyle advice based on findings"
+  ],
+  "confidence": "high|medium|low",
+  "summary": "One paragraph plain language summary for the patient"
+}
+
+Rules:
+- Be medically accurate but use simple language
+- Consider Indian dietary habits and lifestyle
+- Mention Aarogyasri or CGHS if cost is a concern
+- If language is telugu, respond in Telugu
+- Return ONLY JSON, no markdown"""
+
+    user_prompt = f"""{profile_ctx}
+Report: {report.filename}
+Report Type: {report.report_type or 'Medical Report'}
+
+Analysis Summary:
+{extract.summary_text}
+
+Provide an independent second opinion on this report.
+Language: {language}"""
+
+    try:
+        response = await medical_llm_response([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ])
+
+        text = response.strip()
+        if '```json' in text:
+            text = text.split('```json')[1].split('```')[0].strip()
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0].strip()
+
+        import json as json_mod
+        data = json_mod.loads(text)
+        return {"success": True, "data": data, "report_id": report_id}
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Second opinion error: {e}")
+        return {
+            "success": False,
+            "error": "Could not generate second opinion. Please try again."
+        }
+
+
+@router.post("/{report_id}/decode-discharge")
+async def decode_discharge_summary(
+    report_id: int,
+    language: str = "english",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Decode a hospital discharge summary into plain language.
+    Focused on Indian hospitals and AP context.
+    """
+    from app.services.llm_service import medical_llm_response
+
+    report = db.query(models.Report).filter(
+        models.Report.id == report_id,
+        models.Report.user_id == current_user.id
+    ).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    extract = crud.get_report_extract(db, report_id)
+    if not extract or not extract.summary_text:
+        raise HTTPException(
+            status_code=422,
+            detail="Report has no analysis yet. Please generate explanation first."
+        )
+
+    system_prompt = """You are a patient-friendly medical interpreter
+in India helping patients understand their hospital discharge summary.
+Use very simple language that any person can understand.
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "what_happened": "Plain language explanation of what happened medically",
+  "diagnosis": "The main diagnosis/diagnoses in simple terms",
+  "procedures_done": [
+    "Procedure done during hospital stay in simple terms"
+  ],
+  "medicines": [
+    {
+      "name": "Medicine name",
+      "purpose": "Why you need this medicine in simple terms",
+      "how_to_take": "Dosage and timing instructions",
+      "duration": "How long to take it",
+      "important_note": "Any important warning or note"
+    }
+  ],
+  "followup": [
+    {
+      "what": "What follow-up is needed",
+      "when": "When to do it",
+      "where": "What type of doctor/facility"
+    }
+  ],
+  "warning_signs": [
+    "Warning sign that means go to hospital immediately"
+  ],
+  "activity_restrictions": [
+    "What activities to avoid and for how long"
+  ],
+  "diet_instructions": [
+    "Specific diet instruction"
+  ],
+  "wound_care": "Any wound or incision care instructions if applicable",
+  "emergency_number": "108",
+  "simple_summary": "2-3 sentence very simple summary a non-medical person can understand"
+}
+
+Rules:
+- Explain every medical term in brackets after using it
+- Use Telugu words where helpful if language is telugu
+- Mention 108 ambulance for emergencies
+- Consider Indian home remedies that should be AVOIDED
+- Return ONLY JSON, no markdown"""
+
+    user_prompt = f"""Hospital Discharge Summary:
+{extract.summary_text}
+
+Decode this discharge summary into simple language.
+Language: {language}"""
+
+    try:
+        response = await medical_llm_response([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ])
+
+        text = response.strip()
+        if '```json' in text:
+            text = text.split('```json')[1].split('```')[0].strip()
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0].strip()
+
+        import json as json_mod
+        data = json_mod.loads(text)
+        return {"success": True, "data": data, "report_id": report_id}
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Discharge decode error: {e}")
+        return {
+            "success": False,
+            "error": "Could not decode discharge summary. Please try again."
+        }

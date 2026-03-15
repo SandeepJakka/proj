@@ -27,6 +27,8 @@ from app.db.models_profile import HealthProfile
 from app.db.models_reminders import MedicineReminder
 from app.db.models_plans import HealthPlan
 from app.api import users, chat, medical, reports, profile, lifestyle, auth, reminders
+from app.db.models_insurance import InsurancePolicy
+from app.db.models_family import FamilyMember, FamilyMemberReport
 
 # ── Rate Limiter ──────────────────────────────────────────────────────────────
 # Uses client IP address as the key for rate limiting.
@@ -73,6 +75,12 @@ app.include_router(profile.router)
 app.include_router(lifestyle.router)
 app.include_router(auth.router)
 app.include_router(reminders.router)
+from app.api import medicines
+app.include_router(medicines.router)
+from app.api import insurance
+app.include_router(insurance.router)
+from app.api import family
+app.include_router(family.router)
 
 # ── Health check ─────────────────────────────────────────────────────────────
 @app.get("/")

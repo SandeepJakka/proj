@@ -19,8 +19,10 @@ import Reports from './pages/Reports';
 import Lifestyle from './pages/Lifestyle';
 import Profile from './pages/Profile';
 import Reminders from './pages/Reminders';
+import Insurance from './pages/Insurance';
 import PublicProfile from './pages/PublicProfile';
 import Onboarding from './pages/Onboarding';
+import EmergencyCard from './pages/EmergencyCard';
 
 const isLoggedIn = () => !!localStorage.getItem('access_token');
 
@@ -63,6 +65,15 @@ function App() {
             </Protected>
           } />
 
+          {/* Insurance - protected */}
+          <Route path="/insurance" element={
+            <Protected>
+              <AuthLayout>
+                <Insurance />
+              </AuthLayout>
+            </Protected>
+          } />
+
           {/* Onboarding - protected, new users only */}
           <Route path="/onboarding" element={
             <Protected>
@@ -72,6 +83,9 @@ function App() {
 
           {/* Public profile - no auth needed */}
           <Route path="/profile/:username" element={<PublicProfile />} />
+
+          {/* Emergency card - public, no auth needed */}
+          <Route path="/emergency/:username" element={<EmergencyCard />} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />

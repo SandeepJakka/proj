@@ -25,7 +25,13 @@ const Profile = () => {
         activity_level: 'Moderate',
         dietary_preferences: '',
         known_conditions: '',
-        allergies: ''
+        allergies: '',
+        emergency_contact_name: '',
+        emergency_contact_phone: '',
+        emergency_contact_relation: '',
+        primary_doctor_name: '',
+        primary_doctor_phone: '',
+        current_medicines: '',
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -37,12 +43,21 @@ const Profile = () => {
     const [sharingLoaded, setSharingLoaded] = useState(false);
     const [savingSharing, setSavingSharing] = useState(false);
     const [userEmail, setUserEmail] = useState('');
+    const [cardView, setCardView] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
             try {
                 const res = await getProfile();
                 if (res.data) setProfile(res.data);
+
+                // Ensure emergency columns exist
+                fetch('http://localhost:8000/api/profile/migrate-emergency-fields', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                }).catch(() => {});
             } catch (err) {
                 console.error("Failed to fetch profile", err);
             } finally {
@@ -387,6 +402,575 @@ const Profile = () => {
                                 {savingSharing ? 'Saving...' : '💾 Save Sharing Settings'}
                             </button>
                         </div>
+                    </div>
+
+                    {/* ── Emergency Information Card ─────────────── */}
+                    <div className="form-section card stagger-item">
+                        <div className="section-title">
+                            <span style={{ fontSize: '1.2rem' }}>🚨</span>
+                            <h2>Emergency Information Card</h2>
+                        </div>
+
+                        {/* Card preview toggle */}
+                        <div style={{
+                            display: 'flex', gap: 10,
+                            marginBottom: 20, flexWrap: 'wrap'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setCardView(false)}
+                                style={{
+                                    padding: '8px 16px', borderRadius: 8,
+                                    border: !cardView
+                                        ? '1.5px solid #2563EB'
+                                        : '1px solid #2A2D3A',
+                                    background: !cardView
+                                        ? 'rgba(37,99,235,0.15)' : 'transparent',
+                                    color: !cardView ? '#60A5FA' : '#9CA3AF',
+                                    cursor: 'pointer', fontSize: '0.82rem',
+                                    fontWeight: !cardView ? 600 : 400
+                                }}
+                            >
+                                ✏️ Edit Details
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCardView(true)}
+                                style={{
+                                    padding: '8px 16px', borderRadius: 8,
+                                    border: cardView
+                                        ? '1.5px solid #10B981'
+                                        : '1px solid #2A2D3A',
+                                    background: cardView
+                                        ? 'rgba(16,185,129,0.15)' : 'transparent',
+                                    color: cardView ? '#10B981' : '#9CA3AF',
+                                    cursor: 'pointer', fontSize: '0.82rem',
+                                    fontWeight: cardView ? 600 : 400
+                                }}
+                            >
+                                👁 Preview Card
+                            </button>
+                        </div>
+
+                        {/* Edit form */}
+                        {!cardView && (
+                            <div className="form-grid">
+                                <div className="input-field">
+                                    <label>Emergency Contact Name</label>
+                                    <input
+                                        className="form-input"
+                                        placeholder="e.g. Ravi Kumar (Father)"
+                                        value={profile.emergency_contact_name || ''}
+                                        onChange={e => setProfile(p => ({
+                                            ...p,
+                                            emergency_contact_name: e.target.value
+                                        }))}
+                                    />
+                                </div>
+                                <div className="input-field">
+                                    <label>Emergency Contact Phone</label>
+                                    <input
+                                        className="form-input"
+                                        placeholder="e.g. +91 98765 43210"
+                                        value={profile.emergency_contact_phone || ''}
+                                        onChange={e => setProfile(p => ({
+                                            ...p,
+                                            emergency_contact_phone: e.target.value
+                                        }))}
+                                    />
+                                </div>
+                                <div className="input-field">
+                                    <label>Relationship</label>
+                                    <input
+                                        className="form-input"
+                                        placeholder="e.g. Father, Mother, Spouse"
+                                        value={profile.emergency_contact_relation || ''}
+                                        onChange={e => setProfile(p => ({
+                                            ...p,
+                                            emergency_contact_relation: e.target.value
+                                        }))}
+                                    />
+                                </div>
+                                <div className="input-field">
+                                    <label>Primary Doctor Name</label>
+                                    <input
+                                        className="form-input"
+                                        placeholder="e.g. Dr. Suresh Reddy"
+                                        value={profile.primary_doctor_name || ''}
+                                        onChange={e => setProfile(p => ({
+                                            ...p,
+                                            primary_doctor_name: e.target.value
+                                        }))}
+                                    />
+                                </div>
+                                <div className="input-field">
+                                    <label>Doctor Phone</label>
+                                    <input
+                                        className="form-input"
+                                        placeholder="e.g. +91 98765 43210"
+                                        value={profile.primary_doctor_phone || ''}
+                                        onChange={e => setProfile(p => ({
+                                            ...p,
+                                            primary_doctor_phone: e.target.value
+                                        }))}
+                                    />
+                                </div>
+                                <div className="input-field" style={{ gridColumn: '1 / -1' }}>
+                                    <label>Current Medicines</label>
+                                    <input
+                                        className="form-input"
+                                        placeholder="e.g. Metformin 500mg, Amlodipine 5mg"
+                                        value={profile.current_medicines || ''}
+                                        onChange={e => setProfile(p => ({
+                                            ...p,
+                                            current_medicines: e.target.value
+                                        }))}
+                                    />
+                                    <span style={{
+                                        fontSize: '0.72rem', color: '#6B7280'
+                                    }}>
+                                        Separate medicines with commas
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Card Preview */}
+                        {cardView && (
+                            <div>
+                                {/* The actual card */}
+                                <div id="emergency-card" style={{
+                                    background: 'linear-gradient(135deg, #0F1117 0%, #1A1D27 100%)',
+                                    border: '2px solid #EF4444',
+                                    borderRadius: 16,
+                                    padding: 24,
+                                    maxWidth: 480,
+                                    margin: '0 auto 20px',
+                                    fontFamily: 'Inter, sans-serif',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                    boxShadow: '0 8px 32px rgba(239,68,68,0.15)'
+                                }}>
+                                    {/* Red accent bar top */}
+                                    <div style={{
+                                        position: 'absolute', top: 0, left: 0, right: 0,
+                                        height: 4,
+                                        background: 'linear-gradient(90deg, #EF4444, #F59E0B)'
+                                    }} />
+
+                                    {/* Card header */}
+                                    <div style={{
+                                        display: 'flex', justifyContent: 'space-between',
+                                        alignItems: 'flex-start', marginBottom: 20
+                                    }}>
+                                        <div>
+                                            <div style={{
+                                                display: 'flex', alignItems: 'center',
+                                                gap: 8, marginBottom: 4
+                                            }}>
+                                                <span style={{ fontSize: '1.2rem' }}>🚨</span>
+                                                <span style={{
+                                                    color: '#EF4444', fontWeight: 800,
+                                                    fontSize: '0.75rem', letterSpacing: '0.1em',
+                                                    textTransform: 'uppercase'
+                                                }}>
+                                                    Emergency Medical ID
+                                                </span>
+                                            </div>
+                                            <div style={{
+                                                color: '#F8F9FA', fontWeight: 700,
+                                                fontSize: '1.3rem', lineHeight: 1.2
+                                            }}>
+                                                {profile.emergency_contact_name
+                                                    ? (profile.emergency_contact_name.split('(')[0] || profile.emergency_contact_name)
+                                                    : 'Your Name Here'}
+                                            </div>
+                                            <div style={{
+                                                color: '#9CA3AF', fontSize: '0.78rem'
+                                            }}>
+                                                Powered by Healthora
+                                            </div>
+                                        </div>
+                                        {/* Blood type badge */}
+                                        {profile.blood_type && (
+                                            <div style={{
+                                                background: 'rgba(239,68,68,0.15)',
+                                                border: '2px solid rgba(239,68,68,0.4)',
+                                                borderRadius: 12, padding: '8px 14px',
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{
+                                                    color: '#EF4444', fontWeight: 800,
+                                                    fontSize: '1.4rem', lineHeight: 1
+                                                }}>
+                                                    {profile.blood_type}
+                                                </div>
+                                                <div style={{
+                                                    color: '#9CA3AF', fontSize: '0.6rem',
+                                                    marginTop: 2
+                                                }}>
+                                                    BLOOD
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Info grid */}
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: 12, marginBottom: 16
+                                    }}>
+                                        {profile.age && (
+                                            <div style={{
+                                                background: 'rgba(255,255,255,0.04)',
+                                                borderRadius: 8, padding: '10px 12px'
+                                            }}>
+                                                <div style={{
+                                                    color: '#6B7280', fontSize: '0.65rem',
+                                                    fontWeight: 600, textTransform: 'uppercase',
+                                                    letterSpacing: '0.05em', marginBottom: 3
+                                                }}>Age / Gender</div>
+                                                <div style={{
+                                                    color: '#F8F9FA', fontWeight: 600,
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    {profile.age}y · {profile.gender || '—'}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {(profile.weight_kg || profile.height_cm) && (
+                                            <div style={{
+                                                background: 'rgba(255,255,255,0.04)',
+                                                borderRadius: 8, padding: '10px 12px'
+                                            }}>
+                                                <div style={{
+                                                    color: '#6B7280', fontSize: '0.65rem',
+                                                    fontWeight: 600, textTransform: 'uppercase',
+                                                    letterSpacing: '0.05em', marginBottom: 3
+                                                }}>Weight / Height</div>
+                                                <div style={{
+                                                    color: '#F8F9FA', fontWeight: 600,
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    {profile.weight_kg || '—'}kg · {profile.height_cm || '—'}cm
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Allergies — highlighted red */}
+                                    {profile.allergies && (
+                                        <div style={{
+                                            background: 'rgba(239,68,68,0.08)',
+                                            border: '1px solid rgba(239,68,68,0.25)',
+                                            borderRadius: 8, padding: '10px 12px',
+                                            marginBottom: 12
+                                        }}>
+                                            <div style={{
+                                                color: '#EF4444', fontSize: '0.65rem',
+                                                fontWeight: 700, textTransform: 'uppercase',
+                                                letterSpacing: '0.08em', marginBottom: 4,
+                                                display: 'flex', alignItems: 'center', gap: 4
+                                            }}>
+                                                ⚠️ ALLERGIES
+                                            </div>
+                                            <div style={{
+                                                color: '#FCA5A5', fontSize: '0.82rem',
+                                                fontWeight: 500
+                                            }}>
+                                                {profile.allergies}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Known conditions */}
+                                    {profile.known_conditions && (
+                                        <div style={{
+                                            background: 'rgba(245,158,11,0.08)',
+                                            border: '1px solid rgba(245,158,11,0.2)',
+                                            borderRadius: 8, padding: '10px 12px',
+                                            marginBottom: 12
+                                        }}>
+                                            <div style={{
+                                                color: '#F59E0B', fontSize: '0.65rem',
+                                                fontWeight: 700, textTransform: 'uppercase',
+                                                letterSpacing: '0.08em', marginBottom: 4
+                                            }}>
+                                                🏥 CONDITIONS
+                                            </div>
+                                            <div style={{
+                                                color: '#FDE68A', fontSize: '0.82rem'
+                                            }}>
+                                                {profile.known_conditions}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Current medicines */}
+                                    {profile.current_medicines && (
+                                        <div style={{
+                                            background: 'rgba(37,99,235,0.08)',
+                                            border: '1px solid rgba(37,99,235,0.2)',
+                                            borderRadius: 8, padding: '10px 12px',
+                                            marginBottom: 12
+                                        }}>
+                                            <div style={{
+                                                color: '#60A5FA', fontSize: '0.65rem',
+                                                fontWeight: 700, textTransform: 'uppercase',
+                                                letterSpacing: '0.08em', marginBottom: 4
+                                            }}>
+                                                💊 CURRENT MEDICINES
+                                            </div>
+                                            <div style={{
+                                                color: '#BFDBFE', fontSize: '0.82rem'
+                                            }}>
+                                                {profile.current_medicines}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Emergency contacts */}
+                                    {profile.emergency_contact_name && (
+                                        <div style={{
+                                            background: 'rgba(16,185,129,0.08)',
+                                            border: '1px solid rgba(16,185,129,0.25)',
+                                            borderRadius: 8, padding: '10px 12px',
+                                            marginBottom: 12
+                                        }}>
+                                            <div style={{
+                                                color: '#10B981', fontSize: '0.65rem',
+                                                fontWeight: 700, textTransform: 'uppercase',
+                                                letterSpacing: '0.08em', marginBottom: 6
+                                            }}>
+                                                📞 EMERGENCY CONTACT
+                                            </div>
+                                            <div style={{
+                                                display: 'flex', justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div>
+                                                    <div style={{
+                                                        color: '#F8F9FA', fontWeight: 600,
+                                                        fontSize: '0.875rem'
+                                                    }}>
+                                                        {profile.emergency_contact_name}
+                                                    </div>
+                                                    {profile.emergency_contact_relation && (
+                                                        <div style={{
+                                                            color: '#9CA3AF', fontSize: '0.72rem'
+                                                        }}>
+                                                            {profile.emergency_contact_relation}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {profile.emergency_contact_phone && (
+                                                    <div style={{
+                                                        color: '#34D399', fontWeight: 700,
+                                                        fontSize: '0.875rem'
+                                                    }}>
+                                                        {profile.emergency_contact_phone}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Doctor */}
+                                    {profile.primary_doctor_name && (
+                                        <div style={{
+                                            background: 'rgba(139,92,246,0.08)',
+                                            border: '1px solid rgba(139,92,246,0.2)',
+                                            borderRadius: 8, padding: '10px 12px',
+                                            marginBottom: 16
+                                        }}>
+                                            <div style={{
+                                                color: '#8B5CF6', fontSize: '0.65rem',
+                                                fontWeight: 700, textTransform: 'uppercase',
+                                                letterSpacing: '0.08em', marginBottom: 6
+                                            }}>
+                                                👨‍⚕️ PRIMARY DOCTOR
+                                            </div>
+                                            <div style={{
+                                                display: 'flex', justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div style={{
+                                                    color: '#F8F9FA', fontWeight: 600,
+                                                    fontSize: '0.875rem'
+                                                }}>
+                                                    {profile.primary_doctor_name}
+                                                </div>
+                                                {profile.primary_doctor_phone && (
+                                                    <div style={{
+                                                        color: '#C4B5FD', fontWeight: 600,
+                                                        fontSize: '0.875rem'
+                                                    }}>
+                                                        {profile.primary_doctor_phone}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Card footer */}
+                                    <div style={{
+                                        borderTop: '1px solid #2A2D3A',
+                                        paddingTop: 12,
+                                        display: 'flex', justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}>
+                                        <div style={{
+                                            color: '#6B7280', fontSize: '0.65rem'
+                                        }}>
+                                            🔒 Generated by Healthora
+                                        </div>
+                                        <div style={{
+                                            color: '#6B7280', fontSize: '0.65rem'
+                                        }}>
+                                            healthora.app
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Action buttons */}
+                                <div style={{
+                                    display: 'flex', gap: 10, flexWrap: 'wrap',
+                                    justifyContent: 'center', marginBottom: 16
+                                }}>
+                                    {/* Print */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const card = document.getElementById('emergency-card')
+                                            const printWindow = window.open('', '_blank')
+                                            printWindow.document.write(`
+                                                <html>
+                                                <head>
+                                                    <title>Emergency Medical Card - Healthora</title>
+                                                    <style>
+                                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                                        body {
+                                                            font-family: Inter, sans-serif;
+                                                            background: white;
+                                                            display: flex;
+                                                            align-items: center;
+                                                            justify-content: center;
+                                                            min-height: 100vh;
+                                                            padding: 20px;
+                                                        }
+                                                        .card-wrapper { max-width: 480px; width: 100%; }
+                                                    </style>
+                                                    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+                                                </head>
+                                                <body>
+                                                    <div class="card-wrapper">${card.outerHTML}</div>
+                                                    <script>window.onload = () => window.print()<\/script>
+                                                </body>
+                                                </html>
+                                            `)
+                                            printWindow.document.close()
+                                        }}
+                                        style={{
+                                            padding: '10px 20px', borderRadius: 10,
+                                            background: 'rgba(37,99,235,0.1)',
+                                            border: '1px solid rgba(37,99,235,0.25)',
+                                            color: '#60A5FA', cursor: 'pointer',
+                                            fontWeight: 600, fontSize: '0.85rem',
+                                            display: 'flex', alignItems: 'center', gap: 8
+                                        }}
+                                    >
+                                        🖨️ Print Card
+                                    </button>
+
+                                    {/* Download as PNG using html2canvas */}
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            try {
+                                                const { default: html2canvas } =
+                                                    await import('html2canvas')
+                                                const card = document.getElementById('emergency-card')
+                                                const canvas = await html2canvas(card, {
+                                                    backgroundColor: '#0F1117',
+                                                    scale: 2,
+                                                    useCORS: true
+                                                })
+                                                const link = document.createElement('a')
+                                                link.download = 'healthora-emergency-card.png'
+                                                link.href = canvas.toDataURL('image/png')
+                                                link.click()
+                                                toast.success('Card downloaded!')
+                                            } catch {
+                                                toast.error('Download failed. Please use Print instead.')
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '10px 20px', borderRadius: 10,
+                                            background: 'rgba(16,185,129,0.1)',
+                                            border: '1px solid rgba(16,185,129,0.25)',
+                                            color: '#10B981', cursor: 'pointer',
+                                            fontWeight: 600, fontSize: '0.85rem',
+                                            display: 'flex', alignItems: 'center', gap: 8
+                                        }}
+                                    >
+                                        ⬇️ Download PNG
+                                    </button>
+
+                                    {/* Share link */}
+                                    {sharing?.username ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const url = `${window.location.origin}/emergency/${sharing.username}`
+                                                navigator.clipboard.writeText(url)
+                                                toast.success('Emergency card link copied!')
+                                            }}
+                                            style={{
+                                                padding: '10px 20px', borderRadius: 10,
+                                                background: 'rgba(239,68,68,0.1)',
+                                                border: '1px solid rgba(239,68,68,0.25)',
+                                                color: '#EF4444', cursor: 'pointer',
+                                                fontWeight: 600, fontSize: '0.85rem',
+                                                display: 'flex', alignItems: 'center', gap: 8
+                                            }}
+                                        >
+                                            🔗 Copy Share Link
+                                        </button>
+                                    ) : (
+                                        <div style={{
+                                            padding: '10px 16px', borderRadius: 10,
+                                            background: 'rgba(107,114,128,0.08)',
+                                            border: '1px solid #2A2D3A',
+                                            color: '#6B7280', fontSize: '0.8rem'
+                                        }}>
+                                            Set a username in Profile Sharing to get a share link
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* QR code / share link hint */}
+                                {sharing?.username && (
+                                    <div style={{
+                                        textAlign: 'center', padding: '10px 16px',
+                                        background: 'rgba(239,68,68,0.05)',
+                                        border: '1px solid rgba(239,68,68,0.15)',
+                                        borderRadius: 10, fontSize: '0.78rem',
+                                        color: '#9CA3AF'
+                                    }}>
+                                        🚨 Share link:{' '}
+                                        <span style={{ color: '#EF4444', fontWeight: 600 }}>
+                                            {window.location.origin}/emergency/{sharing.username}
+                                        </span>
+                                        <br />
+                                        <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>
+                                            First responders can scan or open this link
+                                            to see your emergency info
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     <div className="form-actions">

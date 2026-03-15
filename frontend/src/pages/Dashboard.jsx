@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getProfile, getReports, getCurrentUser, getReminders, getCurrentPlans } from '../services/api';
-import { FileText, MessageSquare, ScanLine, MapPin, Lightbulb, Activity, ChevronRight, Bell, Calendar, Pill, TrendingUp, Clock } from 'lucide-react';
+import { FileText, MessageSquare, ScanLine, MapPin, Lightbulb, Activity, ChevronRight, Bell, Calendar, Pill, TrendingUp, Clock, Users, UserPlus, X, Edit2, Eye, Download } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import ReactMarkdown from 'react-markdown';
 import { useT } from '../context/LanguageContext';
 
 const Dashboard = () => {
@@ -17,21 +18,41 @@ const Dashboard = () => {
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [insightsExpanded, setInsightsExpanded] = useState(false);
 
+  // Family Vault state
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [familyOpen, setFamilyOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [memberFormOpen, setMemberFormOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [memberForm, setMemberForm] = useState({
+    name: '', relation: '', age: '',
+    gender: '', blood_type: '', known_conditions: '',
+    allergies: '', weight_kg: '', height_cm: '', notes: ''
+  });
+  const [savingMember, setSavingMember] = useState(false);
+  const [uploadingReport, setUploadingReport] = useState(false);
+  const memberReportRef = React.useRef(null);
+  const [viewingReport, setViewingReport] = useState(null); // { report, member }
+
   useEffect(() => {
     const load = async () => {
       try {
-        const [userRes, profRes, repRes, remRes, planRes] = await Promise.all([
+        const [userRes, profRes, repRes, remRes, planRes, famRes] = await Promise.all([
           getCurrentUser().catch(() => null),
           getProfile().catch(() => null),
           getReports().catch(() => ({ data: [] })),
           getReminders().catch(() => ({ data: { reminders: [] } })),
           getCurrentPlans().catch(() => ({ data: {} })),
+          fetch('http://localhost:8000/api/family/members', {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+          }).then(r => r.json()).catch(() => [])
         ]);
         if (userRes) setUser(userRes.data);
         if (profRes) setProfile(profRes.data);
         setReports(repRes.data || []);
         setReminders(remRes.data?.reminders || []);
         setPlans(planRes.data || {});
+        setFamilyMembers(Array.isArray(famRes) ? famRes : []);
       } catch (_) {
         toast.error('Could not load dashboard data');
       } finally {
@@ -147,6 +168,139 @@ const Dashboard = () => {
     return date.toLocaleDateString('en-IN', {
       day: 'numeric', month: 'short', year: 'numeric'
     });
+  };
+
+  // ── Family Vault helpers ──────────────────────────────────
+  const RELATIONS = ['Father','Mother','Spouse','Son','Daughter','Brother','Sister','Grandfather','Grandmother','Other'];
+  const BLOOD_TYPES = ['A+','A-','B+','B-','AB+','AB-','O+','O-'];
+  const getInitials = (name) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+  const fetchFamilyMembers = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/family/members', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+      });
+      const data = await res.json();
+      setFamilyMembers(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  const handleSaveMember = async () => {
+    if (!memberForm.name.trim() || !memberForm.relation.trim()) {
+      toast.error('Name and relation are required');
+      return;
+    }
+    setSavingMember(true);
+    try {
+      const payload = {
+        ...memberForm,
+        age: memberForm.age ? parseInt(memberForm.age) : null,
+        weight_kg: memberForm.weight_kg ? parseFloat(memberForm.weight_kg) : null,
+        height_cm: memberForm.height_cm ? parseFloat(memberForm.height_cm) : null,
+      };
+      const url = editingMember
+        ? `http://localhost:8000/api/family/members/${editingMember.id}`
+        : 'http://localhost:8000/api/family/members';
+      const method = editingMember ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Failed to save'); }
+      toast.success(editingMember ? 'Member updated!' : 'Member added!');
+      setMemberFormOpen(false);
+      setEditingMember(null);
+      setMemberForm({ name:'',relation:'',age:'',gender:'',blood_type:'',known_conditions:'',allergies:'',weight_kg:'',height_cm:'',notes:'' });
+      await fetchFamilyMembers();
+    } catch (err) {
+      toast.error(err.message || 'Failed to save member');
+    } finally {
+      setSavingMember(false);
+    }
+  };
+
+  const handleDeleteMember = async (id, name) => {
+    if (!window.confirm(`Remove ${name} from family vault?`)) return;
+    try {
+      await fetch(`http://localhost:8000/api/family/members/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+      });
+      toast.success('Member removed');
+      if (selectedMember?.id === id) setSelectedMember(null);
+      await fetchFamilyMembers();
+    } catch { toast.error('Failed to remove member'); }
+  };
+
+  const handleUploadMemberReport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedMember) return;
+    setUploadingReport(true);
+    const toastId = toast.loading(`Uploading report for ${selectedMember.name}...`);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(
+        `http://localhost:8000/api/family/members/${selectedMember.id}/reports`,
+        { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }, body: formData }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Upload failed');
+      toast.success('Report uploaded and analyzed!', { id: toastId });
+      await fetchFamilyMembers();
+    } catch (err) {
+      toast.error(err.message || 'Upload failed', { id: toastId });
+    } finally {
+      setUploadingReport(false);
+      if (memberReportRef.current) memberReportRef.current.value = '';
+    }
+  };
+
+  // ── Document view / download helpers ─────────────────────────────────────
+  const getReportFileUrl = (member, report, inline = false) =>
+    `http://localhost:8000/api/family/members/${member.id}/reports/${report.id}/download${inline ? '?inline=true' : ''}`;
+
+  const handleDownloadReport = async (member, report) => {
+    if (!report.has_file) { toast.error('No file stored for this report'); return; }
+    const toastId = toast.loading('Preparing download...');
+    try {
+      const res = await fetch(getReportFileUrl(member, report, false), {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+      });
+      if (!res.ok) throw new Error('File not found on server');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = report.filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      toast.success('Download started', { id: toastId });
+    } catch (err) {
+      toast.error(err.message || 'Download failed', { id: toastId });
+    }
+  };
+
+  const handleViewReportInTab = async (member, report) => {
+    if (!report.has_file) { toast.error('No file stored for this report'); return; }
+    const toastId = toast.loading('Opening document...');
+    try {
+      const res = await fetch(getReportFileUrl(member, report, true), {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+      });
+      if (!res.ok) throw new Error('File not found on server');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      toast.success('Opened in new tab', { id: toastId });
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (err) {
+      toast.error(err.message || 'Could not open file', { id: toastId });
+    }
   };
 
   const getInsightColor = (summary) => {
@@ -488,6 +642,279 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* ── Family Health Vault ──────────────────────────────── */}
+      <div className="card stagger-item" style={{ padding: 0, overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: familyOpen ? '1px solid #2A2D3A' : 'none',
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', cursor: 'pointer'
+        }} onClick={() => setFamilyOpen(v => !v)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 10,
+              background: 'rgba(139,92,246,0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Users size={17} color="#8B5CF6" />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>Family Health Vault</h3>
+              <p style={{ margin: 0, color: '#9CA3AF', fontSize: '0.72rem' }}>
+                {familyMembers.length > 0
+                  ? `${familyMembers.length} member${familyMembers.length > 1 ? 's' : ''} · ${familyMembers.reduce((a, m) => a + m.report_count, 0)} reports`
+                  : 'Manage health records for your family'}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {familyOpen && (
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  setEditingMember(null);
+                  setMemberForm({ name:'',relation:'',age:'',gender:'',blood_type:'',known_conditions:'',allergies:'',weight_kg:'',height_cm:'',notes:'' });
+                  setMemberFormOpen(true);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 12px', borderRadius: 8,
+                  background: 'rgba(139,92,246,0.1)',
+                  border: '1px solid rgba(139,92,246,0.25)',
+                  color: '#A78BFA', cursor: 'pointer',
+                  fontSize: '0.75rem', fontWeight: 600
+                }}
+              >
+                <UserPlus size={13} /> Add Member
+              </button>
+            )}
+            <ChevronRight size={16} color="#6B7280" style={{ transform: familyOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+          </div>
+        </div>
+
+        {/* Body */}
+        {familyOpen && (
+          <div style={{ padding: '16px 20px' }}>
+            {familyMembers.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '28px 16px', color: '#6B7280' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>👨‍👩‍👧‍👦</div>
+                <p style={{ fontSize: '0.82rem', marginBottom: 14 }}>Add family members to manage their health records in one place</p>
+                <button
+                  onClick={() => setMemberFormOpen(true)}
+                  style={{ padding: '8px 20px', borderRadius: 9, background: '#8B5CF6', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}
+                >
+                  Add First Member
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10, marginBottom: selectedMember ? 16 : 0 }}>
+                {familyMembers.map(member => (
+                  <div
+                    key={member.id}
+                    onClick={() => setSelectedMember(selectedMember?.id === member.id ? null : member)}
+                    style={{
+                      background: selectedMember?.id === member.id ? `${member.avatar_color}18` : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${selectedMember?.id === member.id ? member.avatar_color + '40' : '#2A2D3A'}`,
+                      borderRadius: 10, padding: 12, cursor: 'pointer',
+                      textAlign: 'center', transition: 'all 0.15s', position: 'relative'
+                    }}
+                  >
+                    <div style={{
+                      width: 44, height: 44, borderRadius: '50%',
+                      background: member.avatar_color,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      margin: '0 auto 8px', color: '#fff', fontWeight: 700, fontSize: '1rem'
+                    }}>
+                      {getInitials(member.name)}
+                    </div>
+                    <div style={{ color: '#F8F9FA', fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</div>
+                    <div style={{ color: '#9CA3AF', fontSize: '0.7rem', marginTop: 2 }}>{member.relation}</div>
+                    {member.age && <div style={{ color: '#6B7280', fontSize: '0.68rem' }}>{member.age}y{member.blood_type && ` · ${member.blood_type}`}</div>}
+                    {member.report_count > 0 && (
+                      <div style={{
+                        position: 'absolute', top: 6, right: 6,
+                        background: member.avatar_color, color: '#fff',
+                        width: 18, height: 18, borderRadius: '50%',
+                        fontSize: '0.6rem', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontWeight: 700
+                      }}>{member.report_count}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Selected member detail */}
+            {selectedMember && (
+              <div style={{ background: '#0F1117', border: `1px solid ${selectedMember.avatar_color}30`, borderRadius: 12, padding: 16, marginTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: selectedMember.avatar_color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>
+                      {getInitials(selectedMember.name)}
+                    </div>
+                    <div>
+                      <div style={{ color: '#F8F9FA', fontWeight: 700, fontSize: '0.95rem' }}>{selectedMember.name}</div>
+                      <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                        {selectedMember.relation}{selectedMember.age && ` · ${selectedMember.age}y`}{selectedMember.gender && ` · ${selectedMember.gender}`}
+                        {selectedMember.blood_type && <span style={{ color: '#EF4444', fontWeight: 700, marginLeft: 4 }}>{selectedMember.blood_type}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => {
+                        setEditingMember(selectedMember);
+                        setMemberForm({
+                          name: selectedMember.name, relation: selectedMember.relation,
+                          age: selectedMember.age || '', gender: selectedMember.gender || '',
+                          blood_type: selectedMember.blood_type || '',
+                          known_conditions: selectedMember.known_conditions || '',
+                          allergies: selectedMember.allergies || '',
+                          weight_kg: selectedMember.weight_kg || '',
+                          height_cm: selectedMember.height_cm || '',
+                          notes: selectedMember.notes || ''
+                        });
+                        setMemberFormOpen(true);
+                      }}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #2A2D3A', borderRadius: 7, color: '#9CA3AF', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}
+                    >
+                      <Edit2 size={11} /> Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteMember(selectedMember.id, selectedMember.name)}
+                      style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 7, color: '#EF4444', cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}
+                    >
+                      <X size={11} /> Remove
+                    </button>
+                  </div>
+                </div>
+
+                {/* Health info pills */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                  {selectedMember.known_conditions && (
+                    <span style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: '#F59E0B', fontSize: '0.7rem', padding: '2px 8px', borderRadius: 6 }}>
+                      🏥 {selectedMember.known_conditions.slice(0, 40)}{selectedMember.known_conditions.length > 40 ? '...' : ''}
+                    </span>
+                  )}
+                  {selectedMember.allergies && (
+                    <span style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#EF4444', fontSize: '0.7rem', padding: '2px 8px', borderRadius: 6 }}>
+                      ⚠️ {selectedMember.allergies.slice(0, 40)}{selectedMember.allergies.length > 40 ? '...' : ''}
+                    </span>
+                  )}
+                  {selectedMember.weight_kg && selectedMember.height_cm && (
+                    <span style={{ background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.15)', color: '#60A5FA', fontSize: '0.7rem', padding: '2px 8px', borderRadius: 6 }}>
+                      BMI: {(selectedMember.weight_kg / ((selectedMember.height_cm / 100) ** 2)).toFixed(1)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Reports */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ color: '#9CA3AF', fontSize: '0.75rem', fontWeight: 600 }}>📋 Reports ({selectedMember.report_count})</span>
+                    <>
+                      <input ref={memberReportRef} type="file" style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png" onChange={handleUploadMemberReport} />
+                      <button
+                        onClick={() => memberReportRef.current?.click()}
+                        disabled={uploadingReport}
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 7, background: `${selectedMember.avatar_color}15`, border: `1px solid ${selectedMember.avatar_color}30`, color: selectedMember.avatar_color, cursor: uploadingReport ? 'not-allowed' : 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                      >
+                        {uploadingReport ? '⏳' : '+ Upload Report'}
+                      </button>
+                    </>
+                  </div>
+                  {selectedMember.reports?.length === 0 ? (
+                    <div style={{ color: '#6B7280', fontSize: '0.75rem', textAlign: 'center', padding: '12px 0' }}>No reports yet. Upload their first report.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
+                      {selectedMember.reports?.map(report => {
+                        const hasExplanation = !!report.summary_text;
+                        return (
+                          <div key={report.id} style={{
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid #2A2D3A',
+                            borderRadius: 10, padding: '10px 12px',
+                            cursor: 'pointer',
+                            transition: 'border-color 0.15s'
+                          }}
+                            onMouseEnter={e => e.currentTarget.style.borderColor = selectedMember.avatar_color + '60'}
+                            onMouseLeave={e => e.currentTarget.style.borderColor = '#2A2D3A'}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                              {/* Icon */}
+                              <div style={{
+                                width: 32, height: 32, borderRadius: 8,
+                                background: hasExplanation ? `${selectedMember.avatar_color}20` : 'rgba(107,114,128,0.1)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.9rem', flexShrink: 0
+                              }}>📄</div>
+                              {/* Info */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ color: '#F8F9FA', fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {report.filename}
+                                </div>
+                                {report.report_type && (
+                                  <span style={{ background: `${selectedMember.avatar_color}18`, color: selectedMember.avatar_color, fontSize: '0.62rem', padding: '1px 7px', borderRadius: 4, fontWeight: 600, textTransform: 'capitalize', display: 'inline-block', marginTop: 3 }}>
+                                    {report.report_type.replace(/_/g, ' ')}
+                                  </span>
+                                )}
+                                {report.summary_text && (
+                                  <div style={{ color: '#9CA3AF', fontSize: '0.7rem', marginTop: 4, lineHeight: 1.45 }}>
+                                    {report.summary_text.slice(0, 90)}{report.summary_text.length > 90 ? '…' : ''}
+                                  </div>
+                                )}
+                                <div style={{ color: '#6B7280', fontSize: '0.63rem', marginTop: 3 }}>
+                                  {new Date(report.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </div>
+                              </div>
+                              {/* Actions */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                                <button
+                                  onClick={() => setViewingReport({ report, member: selectedMember })}
+                                  style={{
+                                    padding: '4px 10px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
+                                    background: hasExplanation ? `${selectedMember.avatar_color}18` : 'rgba(107,114,128,0.1)',
+                                    border: `1px solid ${hasExplanation ? selectedMember.avatar_color + '35' : '#2A2D3A'}`,
+                                    color: hasExplanation ? selectedMember.avatar_color : '#6B7280',
+                                    cursor: 'pointer', whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {hasExplanation ? '📖 View' : '📄 Info'}
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (!window.confirm('Delete this report?')) return;
+                                    try {
+                                      await fetch(
+                                        `http://localhost:8000/api/family/members/${selectedMember.id}/reports/${report.id}`,
+                                        { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } }
+                                      );
+                                      toast.success('Report deleted');
+                                      await fetchFamilyMembers();
+                                    } catch { toast.error('Failed to delete'); }
+                                  }}
+                                  style={{
+                                    padding: '4px 8px', borderRadius: 6, fontSize: '0.68rem',
+                                    background: 'rgba(239,68,68,0.08)',
+                                    border: '1px solid rgba(239,68,68,0.2)',
+                                    color: '#EF4444', cursor: 'pointer'
+                                  }}
+                                >🗑</button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ── Health Timeline ────────────────────────── */}
       <div className="card stagger-item" style={{ padding: 0, overflow: 'hidden' }}>
         
@@ -757,6 +1184,213 @@ const Dashboard = () => {
           }
         }
       `}</style>
+      {/* ── Add / Edit Member Modal ────────────────────── */}
+      {memberFormOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}
+          onClick={() => !savingMember && setMemberFormOpen(false)}>
+          <div style={{ background: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 25px 80px rgba(0,0,0,0.6)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ color: '#F8F9FA', fontWeight: 700, fontSize: '1rem', margin: 0 }}>
+                {editingMember ? '✏️ Edit Member' : '👤 Add Family Member'}
+              </h2>
+              <button onClick={() => setMemberFormOpen(false)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Full Name *</label>
+                <input className="form-input" placeholder="e.g. Ravi Kumar" value={memberForm.name}
+                  onChange={e => setMemberForm(p => ({ ...p, name: e.target.value }))} style={{ fontSize: '16px' }} />
+              </div>
+              <div>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Relation *</label>
+                <select value={memberForm.relation} onChange={e => setMemberForm(p => ({ ...p, relation: e.target.value }))}
+                  style={{ width: '100%', fontSize: '16px', background: '#0F1117', border: '1px solid #2A2D3A', borderRadius: 8, padding: '10px 12px', color: '#F8F9FA' }}>
+                  <option value="">Select...</option>
+                  {RELATIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Age</label>
+                <input className="form-input" type="number" placeholder="e.g. 45" value={memberForm.age}
+                  onChange={e => setMemberForm(p => ({ ...p, age: e.target.value }))} style={{ fontSize: '16px' }} />
+              </div>
+              <div>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Gender</label>
+                <select value={memberForm.gender} onChange={e => setMemberForm(p => ({ ...p, gender: e.target.value }))}
+                  style={{ width: '100%', fontSize: '16px', background: '#0F1117', border: '1px solid #2A2D3A', borderRadius: 8, padding: '10px 12px', color: '#F8F9FA' }}>
+                  <option value="">Select...</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Blood Type</label>
+                <select value={memberForm.blood_type} onChange={e => setMemberForm(p => ({ ...p, blood_type: e.target.value }))}
+                  style={{ width: '100%', fontSize: '16px', background: '#0F1117', border: '1px solid #2A2D3A', borderRadius: 8, padding: '10px 12px', color: '#F8F9FA' }}>
+                  <option value="">Unknown</option>
+                  {BLOOD_TYPES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Weight (kg)</label>
+                <input className="form-input" type="number" placeholder="e.g. 70" value={memberForm.weight_kg}
+                  onChange={e => setMemberForm(p => ({ ...p, weight_kg: e.target.value }))} style={{ fontSize: '16px' }} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Known Conditions</label>
+                <input className="form-input" placeholder="e.g. Diabetes, Hypertension" value={memberForm.known_conditions}
+                  onChange={e => setMemberForm(p => ({ ...p, known_conditions: e.target.value }))} style={{ fontSize: '16px' }} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ color: '#9CA3AF', fontSize: '0.78rem', fontWeight: 600, display: 'block', marginBottom: 6 }}>Allergies</label>
+                <input className="form-input" placeholder="e.g. Penicillin, Shellfish" value={memberForm.allergies}
+                  onChange={e => setMemberForm(p => ({ ...p, allergies: e.target.value }))} style={{ fontSize: '16px' }} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button onClick={() => setMemberFormOpen(false)}
+                style={{ flex: 1, padding: 11, background: 'rgba(107,114,128,0.1)', border: '1px solid #2A2D3A', borderRadius: 10, color: '#9CA3AF', cursor: 'pointer', fontWeight: 500 }}>
+                Cancel
+              </button>
+              <button onClick={handleSaveMember} disabled={savingMember}
+                style={{ flex: 2, padding: 11, background: savingMember ? 'rgba(139,92,246,0.3)' : '#8B5CF6', border: 'none', borderRadius: 10, color: '#fff', cursor: savingMember ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
+                {savingMember ? 'Saving...' : editingMember ? 'Update Member' : 'Add Member'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Report Viewer Modal ───────────────────────────── */}
+      {viewingReport && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}
+          onClick={() => setViewingReport(null)}
+        >
+          <div
+            style={{ background: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: 18, width: '100%', maxWidth: 680, boxShadow: '0 30px 100px rgba(0,0,0,0.7)', overflow: 'hidden' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #2A2D3A', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: viewingReport.member.avatar_color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
+                {getInitials(viewingReport.member.name)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#F8F9FA', fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {viewingReport.report.filename}
+                </div>
+                <div style={{ color: '#9CA3AF', fontSize: '0.73rem', marginTop: 2 }}>
+                  {viewingReport.member.name} · {viewingReport.member.relation}
+                  {viewingReport.report.report_type && (
+                    <span style={{ marginLeft: 8, background: `${viewingReport.member.avatar_color}20`, color: viewingReport.member.avatar_color, padding: '1px 7px', borderRadius: 4, fontSize: '0.63rem', fontWeight: 600, textTransform: 'capitalize' }}>
+                      {viewingReport.report.report_type.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                  <span style={{ marginLeft: 8, color: '#6B7280', fontSize: '0.68rem' }}>
+                    {new Date(viewingReport.report.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                {/* View Document */}
+                {viewingReport.report.has_file && (
+                  <button
+                    onClick={() => handleViewReportInTab(viewingReport.member, viewingReport.report)}
+                    style={{ padding: '6px 11px', borderRadius: 8, background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.25)', color: '#60A5FA', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+                  >
+                    <Eye size={13} /> View
+                  </button>
+                )}
+                {/* Download */}
+                {viewingReport.report.has_file && (
+                  <button
+                    onClick={() => handleDownloadReport(viewingReport.member, viewingReport.report)}
+                    style={{ padding: '6px 11px', borderRadius: 8, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#10B981', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+                  >
+                    <Download size={13} /> Download
+                  </button>
+                )}
+                {/* Delete */}
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('Delete this report?')) return;
+                    try {
+                      await fetch(
+                        `http://localhost:8000/api/family/members/${viewingReport.member.id}/reports/${viewingReport.report.id}`,
+                        { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } }
+                      );
+                      toast.success('Report deleted');
+                      setViewingReport(null);
+                      await fetchFamilyMembers();
+                    } catch { toast.error('Failed to delete'); }
+                  }}
+                  style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#EF4444', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <X size={13} /> Delete
+                </button>
+                <button onClick={() => setViewingReport(null)} style={{ background: 'rgba(107,114,128,0.1)', border: '1px solid #2A2D3A', borderRadius: 8, color: '#9CA3AF', cursor: 'pointer', padding: '6px 10px', display: 'flex', alignItems: 'center' }}>
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '20px 24px', maxHeight: '72vh', overflowY: 'auto' }}>
+              {viewingReport.report.summary_text ? (
+                <>
+                  {/* AI analysis badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, padding: '10px 14px', background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 10 }}>
+                    <span style={{ fontSize: '1rem' }}>🤖</span>
+                    <div>
+                      <div style={{ color: '#10B981', fontWeight: 700, fontSize: '0.78rem' }}>AI Medical Explanation</div>
+                      <div style={{ color: '#6B7280', fontSize: '0.68rem' }}>Generated automatically on upload · For guidance only</div>
+                    </div>
+                  </div>
+                  {/* Markdown content */}
+                  <div style={{
+                    color: '#D1D5DB', fontSize: '0.875rem', lineHeight: 1.75
+                  }}>
+                    <ReactMarkdown
+                      components={{
+                        h1: ({children}) => <h1 style={{ color: '#F8F9FA', fontSize: '1.1rem', fontWeight: 700, marginBottom: 12, marginTop: 20, borderBottom: '1px solid #2A2D3A', paddingBottom: 8 }}>{children}</h1>,
+                        h2: ({children}) => <h2 style={{ color: '#F8F9FA', fontSize: '0.95rem', fontWeight: 700, marginBottom: 10, marginTop: 18 }}>{children}</h2>,
+                        h3: ({children}) => <h3 style={{ color: '#E5E7EB', fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, marginTop: 14 }}>{children}</h3>,
+                        p: ({children}) => <p style={{ color: '#D1D5DB', marginBottom: 12, lineHeight: 1.75 }}>{children}</p>,
+                        ul: ({children}) => <ul style={{ paddingLeft: 20, marginBottom: 12 }}>{children}</ul>,
+                        ol: ({children}) => <ol style={{ paddingLeft: 20, marginBottom: 12 }}>{children}</ol>,
+                        li: ({children}) => <li style={{ color: '#D1D5DB', marginBottom: 6, lineHeight: 1.6 }}>{children}</li>,
+                        strong: ({children}) => <strong style={{ color: '#F8F9FA', fontWeight: 700 }}>{children}</strong>,
+                        em: ({children}) => <em style={{ color: '#A5B4FC', fontStyle: 'italic' }}>{children}</em>,
+                        code: ({children}) => <code style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, padding: '1px 5px', fontSize: '0.82rem', color: '#A5B4FC', fontFamily: 'monospace' }}>{children}</code>,
+                        blockquote: ({children}) => <blockquote style={{ borderLeft: '3px solid #2563EB', paddingLeft: 14, color: '#9CA3AF', margin: '12px 0', fontStyle: 'italic' }}>{children}</blockquote>
+                      }}
+                    >
+                      {viewingReport.report.summary_text}
+                    </ReactMarkdown>
+                  </div>
+                  {/* Disclaimer */}
+                  <div style={{ marginTop: 20, padding: '10px 14px', background: 'rgba(107,114,128,0.06)', borderRadius: 8, border: '1px solid #2A2D3A', fontSize: '0.7rem', color: '#6B7280', lineHeight: 1.5 }}>
+                    ⚠️ This AI explanation is for informational purposes only and does not constitute medical advice. Always consult a qualified healthcare professional for diagnosis and treatment.
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6B7280' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>📄</div>
+                  <h3 style={{ color: '#9CA3AF', fontWeight: 600, fontSize: '0.95rem', marginBottom: 8 }}>No AI Explanation Available</h3>
+                  <p style={{ fontSize: '0.8rem', maxWidth: 300, margin: '0 auto' }}>This report was uploaded but the AI explanation could not be generated at that time.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

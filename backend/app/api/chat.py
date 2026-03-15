@@ -254,3 +254,117 @@ async def delete_chat_session(session_id: str, db: Session = Depends(get_db), cu
     db.commit()
     
     return {"message": "Session deleted"}
+
+
+class AppointmentRequest(BaseModel):
+    symptoms: str
+    language: str = "english"
+    city: str = "Hyderabad"
+
+@router.post("/appointment-prep")
+async def get_appointment_prep(
+    req: AppointmentRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Pre-appointment preparation checklist.
+    Analyzes symptoms and returns structured guidance
+    focused on India, Andhra Pradesh context.
+    """
+    from app.services.llm_service import medical_llm_response
+
+    profile = crud.get_health_profile(db, current_user.id)
+    profile_context = ""
+    if profile:
+        profile_context = f"""
+Patient Profile:
+- Age: {profile.age}, Gender: {profile.gender}
+- Known Conditions: {profile.known_conditions or 'None'}
+- Allergies: {profile.allergies or 'None'}
+- Blood Type: {profile.blood_type or 'Unknown'}
+"""
+
+    system_prompt = """You are a medical preparation assistant 
+specializing in Indian healthcare, particularly Andhra Pradesh.
+You help patients prepare for doctor appointments.
+
+Always respond with a JSON object in this exact format:
+{
+  "specialist": {
+    "type": "Name of specialist",
+    "reason": "Why this specialist",
+    "telugu_name": "Specialist name in Telugu if applicable",
+    "urgency": "routine|soon|urgent|emergency"
+  },
+  "hospitals": [
+    "Relevant hospital or type of facility in AP/Hyderabad"
+  ],
+  "questions": [
+    "Question 1 to ask the doctor",
+    "Question 2 to ask the doctor",
+    "Question 3 to ask the doctor",
+    "Question 4 to ask the doctor",
+    "Question 5 to ask the doctor"
+  ],
+  "tests_beforehand": [
+    "Test 1 to get done before appointment",
+    "Test 2 to get done before appointment"
+  ],
+  "documents_to_bring": [
+    "Document 1",
+    "Document 2"
+  ],
+  "what_to_expect": "2-3 sentences about what will happen during the visit",
+  "estimated_cost": {
+    "government_hospital": "Cost range at government hospital in AP",
+    "private_hospital": "Cost range at private hospital in AP",
+    "diagnostic_tests": "Approximate cost of recommended tests"
+  },
+  "red_flags": [
+    "Warning sign that needs emergency care immediately"
+  ],
+  "tip": "One practical tip specific to Andhra Pradesh healthcare"
+}
+
+Rules:
+- Always think about government hospitals like NIMS, Gandhi,
+  King George Hospital for affordable options
+- Mention Jan Aushadhi for medicines when relevant
+- Consider Aarogyasri health scheme for cost estimates
+- If symptoms are severe/emergency, urgency must be "emergency"
+- Respond in Telugu if language is telugu
+- Return ONLY valid JSON, no markdown, no explanation"""
+
+    user_prompt = f"""{profile_context}
+City: {req.city}, Andhra Pradesh, India
+Symptoms: {req.symptoms}
+
+Analyze these symptoms and provide pre-appointment preparation guidance."""
+
+    try:
+        response = await medical_llm_response([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ])
+
+        # Clean JSON
+        text = response.strip()
+        if '```json' in text:
+            text = text.split('```json')[1].split('```')[0].strip()
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0].strip()
+
+        import json as json_module
+        data = json_module.loads(text)
+        return {"success": True, "data": data, "symptoms": req.symptoms}
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Appointment prep error: {e}")
+        # Fallback response
+        return {
+            "success": False,
+            "error": "Could not generate preparation guide. Please try again.",
+            "symptoms": req.symptoms
+        }

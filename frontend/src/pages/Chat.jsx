@@ -22,6 +22,12 @@ const Chat = () => {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [hoveredSessionId, setHoveredSessionId] = useState(null);
 
+  const [appointmentMode, setAppointmentMode] = useState(false)
+  const [appointmentSymptoms, setAppointmentSymptoms] = useState('')
+  const [appointmentCity, setAppointmentCity] = useState('Hyderabad')
+  const [appointmentLoading, setAppointmentLoading] = useState(false)
+  const [appointmentResult, setAppointmentResult] = useState(null)
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', handleResize);
@@ -149,6 +155,43 @@ const Chat = () => {
       setLoading(false);
     }
   };
+
+  const handleAppointmentPrep = async () => {
+    if (!appointmentSymptoms.trim()) {
+      toast.error('Please describe your symptoms first')
+      return
+    }
+    setAppointmentLoading(true)
+    setAppointmentResult(null)
+    try {
+      const token = localStorage.getItem('access_token')
+      const res = await fetch(
+        'http://localhost:8000/api/chat/appointment-prep',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            symptoms: appointmentSymptoms,
+            language: language,
+            city: appointmentCity
+          })
+        }
+      )
+      const data = await res.json()
+      if (data.success) {
+        setAppointmentResult(data.data)
+      } else {
+        toast.error(data.error || 'Failed to generate guide')
+      }
+    } catch {
+      toast.error('Connection error. Please try again.')
+    } finally {
+      setAppointmentLoading(false)
+    }
+  }
 
   // Fix 5: File upload handler
   const handleFileUpload = async (e) => {
@@ -372,6 +415,32 @@ const Chat = () => {
             {!isLoggedIn() && (
               <Link to="/register" style={{ fontSize: '0.78rem', color: '#9CA3AF' }}>Sign up to save chat</Link>
             )}
+            
+            {isLoggedIn() && (
+              <button
+                onClick={() => {
+                  setAppointmentMode(v => !v)
+                  setAppointmentResult(null)
+                  setAppointmentSymptoms('')
+                }}
+                style={{
+                  padding: '6px 12px', borderRadius: 8,
+                  border: appointmentMode
+                    ? '1.5px solid #F59E0B'
+                    : '1px solid #2A2D3A',
+                  background: appointmentMode
+                    ? 'rgba(245,158,11,0.15)' : 'transparent',
+                  color: appointmentMode ? '#F59E0B' : '#9CA3AF',
+                  cursor: 'pointer', fontSize: '0.75rem',
+                  fontWeight: appointmentMode ? 600 : 400,
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  transition: 'all 0.2s', whiteSpace: 'nowrap'
+                }}
+              >
+                🏥 {appointmentMode ? 'Back to Chat' : 'Pre-appointment'}
+              </button>
+            )}
+
             <div className="lang-toggle">
               <button className={language === 'english' ? 'active' : ''} onClick={() => language !== 'english' && toggleLanguage()}>EN</button>
               <button className={language === 'telugu' ? 'active' : ''} onClick={() => language !== 'telugu' && toggleLanguage()}>తె</button>
@@ -379,8 +448,531 @@ const Chat = () => {
           </div>
         </div>
 
+        {/* Appointment Mode Panel */}
+        {appointmentMode && (
+          <div style={{
+            flex: 1, overflowY: 'auto',
+            padding: 'clamp(14px, 3vw, 24px)',
+            display: 'flex', flexDirection: 'column', gap: 16
+          }}>
+
+            {/* Header */}
+            <div style={{
+              background: 'rgba(245,158,11,0.08)',
+              border: '1px solid rgba(245,158,11,0.2)',
+              borderRadius: 12, padding: '14px 18px'
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                gap: 10, marginBottom: 6
+              }}>
+                <span style={{ fontSize: '1.3rem' }}>🏥</span>
+                <div>
+                  <div style={{
+                    color: '#F8F9FA', fontWeight: 700,
+                    fontSize: '0.95rem'
+                  }}>
+                    Pre-appointment Preparation
+                  </div>
+                  <div style={{
+                    color: '#9CA3AF', fontSize: '0.75rem'
+                  }}>
+                    Describe your symptoms → AI prepares your visit
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Input area */}
+            {!appointmentResult && (
+              <div style={{
+                background: '#1A1D27',
+                border: '1px solid #2A2D3A',
+                borderRadius: 12, padding: 20
+              }}>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{
+                    color: '#9CA3AF', fontSize: '0.8rem',
+                    fontWeight: 600, display: 'block', marginBottom: 8
+                  }}>
+                    📍 Your city in Andhra Pradesh
+                  </label>
+                  <select
+                    value={appointmentCity}
+                    onChange={e => setAppointmentCity(e.target.value)}
+                    style={{
+                      width: '100%', background: '#0F1117',
+                      border: '1px solid #2A2D3A', borderRadius: 8,
+                      padding: '9px 12px', color: '#F8F9FA',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    {[
+                      'Hyderabad', 'Vijayawada', 'Visakhapatnam',
+                      'Tirupati', 'Guntur', 'Nellore', 'Kurnool',
+                      'Rajahmundry', 'Kakinada', 'Peddapuram',
+                      'Eluru', 'Ongole', 'Anantapur', 'Kadapa',
+                      'Srikakulam', 'Vizianagaram'
+                    ].map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{
+                    color: '#9CA3AF', fontSize: '0.8rem',
+                    fontWeight: 600, display: 'block', marginBottom: 8
+                  }}>
+                    🩺 Describe your symptoms
+                  </label>
+                  <textarea
+                    value={appointmentSymptoms}
+                    onChange={e => setAppointmentSymptoms(e.target.value)}
+                    placeholder="e.g. I have chest pain for 3 days, mild fever, and shortness of breath when climbing stairs..."
+                    rows={4}
+                    style={{
+                      width: '100%', background: '#0F1117',
+                      border: '1px solid #2A2D3A', borderRadius: 8,
+                      padding: '10px 12px', color: '#F8F9FA',
+                      fontSize: '16px', resize: 'vertical',
+                      fontFamily: 'inherit', lineHeight: 1.6
+                    }}
+                  />
+                </div>
+
+                {/* Quick symptom chips */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{
+                    color: '#6B7280', fontSize: '0.72rem',
+                    marginBottom: 8
+                  }}>
+                    Common symptoms (tap to add):
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {[
+                      'Chest pain', 'Fever', 'Headache',
+                      'Joint pain', 'Diabetes symptoms',
+                      'Eye problems', 'Skin rash',
+                      'Stomach pain', 'Back pain',
+                      'High BP'
+                    ].map(symptom => (
+                      <button
+                        key={symptom}
+                        type="button"
+                        onClick={() => setAppointmentSymptoms(
+                          prev => prev
+                            ? prev + ', ' + symptom.toLowerCase()
+                            : symptom.toLowerCase()
+                        )}
+                        style={{
+                          padding: '4px 10px', borderRadius: 20,
+                          border: '1px solid #2A2D3A',
+                          background: 'rgba(255,255,255,0.03)',
+                          color: '#9CA3AF', cursor: 'pointer',
+                          fontSize: '0.72rem', transition: 'all 0.15s'
+                        }}
+                      >
+                        {symptom}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAppointmentPrep}
+                  disabled={appointmentLoading || !appointmentSymptoms.trim()}
+                  style={{
+                    width: '100%', padding: '12px',
+                    background: appointmentLoading || !appointmentSymptoms.trim()
+                      ? 'rgba(245,158,11,0.3)' : '#F59E0B',
+                    border: 'none', borderRadius: 10,
+                    color: '#000', cursor: appointmentLoading
+                      ? 'not-allowed' : 'pointer',
+                    fontWeight: 700, fontSize: '0.9rem',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: 10
+                  }}
+                >
+                  {appointmentLoading ? (
+                    <>
+                      <div style={{
+                        width: 18, height: 18,
+                        border: '2px solid rgba(0,0,0,0.3)',
+                        borderTop: '2px solid #000',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }} />
+                      Preparing your guide...
+                    </>
+                  ) : (
+                    '🏥 Generate Pre-appointment Guide'
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Results */}
+            {appointmentResult && (
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 12
+              }}>
+
+                {/* Reset button */}
+                <button
+                  onClick={() => {
+                    setAppointmentResult(null)
+                    setAppointmentSymptoms('')
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    padding: '6px 14px', borderRadius: 8,
+                    background: 'rgba(107,114,128,0.1)',
+                    border: '1px solid #2A2D3A',
+                    color: '#9CA3AF', cursor: 'pointer',
+                    fontSize: '0.78rem'
+                  }}
+                >
+                  ← Try different symptoms
+                </button>
+
+                {/* Specialist card */}
+                <div style={{
+                  background: appointmentResult.specialist?.urgency === 'emergency'
+                    ? 'rgba(239,68,68,0.1)'
+                    : appointmentResult.specialist?.urgency === 'urgent'
+                      ? 'rgba(245,158,11,0.1)'
+                      : 'rgba(37,99,235,0.1)',
+                  border: `1px solid ${
+                    appointmentResult.specialist?.urgency === 'emergency'
+                      ? 'rgba(239,68,68,0.3)'
+                      : appointmentResult.specialist?.urgency === 'urgent'
+                        ? 'rgba(245,158,11,0.3)'
+                        : 'rgba(37,99,235,0.3)'
+                  }`,
+                  borderRadius: 12, padding: '16px 18px'
+                }}>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'flex-start', flexWrap: 'wrap', gap: 8
+                  }}>
+                    <div>
+                      <div style={{
+                        color: '#9CA3AF', fontSize: '0.7rem',
+                        fontWeight: 600, textTransform: 'uppercase',
+                        letterSpacing: '0.06em', marginBottom: 4
+                      }}>
+                        👨‍⚕️ See this specialist
+                      </div>
+                      <div style={{
+                        color: '#F8F9FA', fontWeight: 700,
+                        fontSize: '1.1rem'
+                      }}>
+                        {appointmentResult.specialist?.type}
+                      </div>
+                      {appointmentResult.specialist?.telugu_name && (
+                        <div style={{
+                          color: '#9CA3AF', fontSize: '0.8rem'
+                        }}>
+                          {appointmentResult.specialist.telugu_name}
+                        </div>
+                      )}
+                      <div style={{
+                        color: '#9CA3AF', fontSize: '0.8rem',
+                        marginTop: 4
+                      }}>
+                        {appointmentResult.specialist?.reason}
+                      </div>
+                    </div>
+                    <span style={{
+                      padding: '4px 12px', borderRadius: 20,
+                      fontSize: '0.72rem', fontWeight: 700,
+                      textTransform: 'uppercase',
+                      background: appointmentResult.specialist?.urgency === 'emergency'
+                        ? '#EF4444'
+                        : appointmentResult.specialist?.urgency === 'urgent'
+                          ? '#F59E0B'
+                          : appointmentResult.specialist?.urgency === 'soon'
+                            ? 'rgba(245,158,11,0.2)'
+                            : 'rgba(16,185,129,0.2)',
+                      color: appointmentResult.specialist?.urgency === 'emergency'
+                        ? '#fff'
+                        : appointmentResult.specialist?.urgency === 'urgent'
+                          ? '#000'
+                          : appointmentResult.specialist?.urgency === 'soon'
+                            ? '#F59E0B'
+                            : '#10B981'
+                    }}>
+                      {appointmentResult.specialist?.urgency}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Red flags */}
+                {appointmentResult.red_flags?.length > 0 && (
+                  <div style={{
+                    background: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    borderRadius: 10, padding: '12px 16px'
+                  }}>
+                    <div style={{
+                      color: '#EF4444', fontWeight: 700,
+                      fontSize: '0.75rem', marginBottom: 8,
+                      textTransform: 'uppercase', letterSpacing: '0.06em'
+                    }}>
+                      🚨 Seek Emergency Care If:
+                    </div>
+                    {appointmentResult.red_flags.map((flag, i) => (
+                      <div key={i} style={{
+                        color: '#FCA5A5', fontSize: '0.82rem',
+                        marginBottom: 4, display: 'flex',
+                        alignItems: 'flex-start', gap: 6
+                      }}>
+                        <span style={{ flexShrink: 0 }}>•</span>
+                        <span>{flag}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Two column grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: 12
+                }}>
+                  {/* Questions to ask */}
+                  {appointmentResult.questions?.length > 0 && (
+                    <div style={{
+                      background: '#1A1D27',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#60A5FA', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        ❓ Questions to Ask Doctor
+                      </div>
+                      {appointmentResult.questions.map((q, i) => (
+                        <div key={i} style={{
+                          color: '#D1D5DB', fontSize: '0.82rem',
+                          marginBottom: 6, display: 'flex',
+                          alignItems: 'flex-start', gap: 6
+                        }}>
+                          <span style={{
+                            color: '#2563EB', fontWeight: 700,
+                            flexShrink: 0, fontSize: '0.72rem'
+                          }}>
+                            {i + 1}.
+                          </span>
+                          <span>{q}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Tests beforehand */}
+                  {appointmentResult.tests_beforehand?.length > 0 && (
+                    <div style={{
+                      background: '#1A1D27',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#10B981', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        🧪 Tests to Get Beforehand
+                      </div>
+                      {appointmentResult.tests_beforehand.map((t, i) => (
+                        <div key={i} style={{
+                          color: '#D1D5DB', fontSize: '0.82rem',
+                          marginBottom: 6, display: 'flex',
+                          alignItems: 'flex-start', gap: 6
+                        }}>
+                          <span style={{
+                            color: '#10B981', flexShrink: 0
+                          }}>✓</span>
+                          <span>{t}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Documents to bring */}
+                  {appointmentResult.documents_to_bring?.length > 0 && (
+                    <div style={{
+                      background: '#1A1D27',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#8B5CF6', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        📁 Documents to Bring
+                      </div>
+                      {appointmentResult.documents_to_bring.map((d, i) => (
+                        <div key={i} style={{
+                          color: '#D1D5DB', fontSize: '0.82rem',
+                          marginBottom: 6, display: 'flex',
+                          alignItems: 'flex-start', gap: 6
+                        }}>
+                          <span style={{
+                            color: '#8B5CF6', flexShrink: 0
+                          }}>📄</span>
+                          <span>{d}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Cost estimate */}
+                  {appointmentResult.estimated_cost && (
+                    <div style={{
+                      background: '#1A1D27',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#F59E0B', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        💰 Estimated Cost in {appointmentCity}
+                      </div>
+                      {Object.entries(appointmentResult.estimated_cost)
+                        .map(([key, value]) => (
+                        <div key={key} style={{
+                          display: 'flex', justifyContent: 'space-between',
+                          alignItems: 'flex-start', marginBottom: 8,
+                          gap: 8
+                        }}>
+                          <span style={{
+                            color: '#9CA3AF', fontSize: '0.75rem',
+                            textTransform: 'capitalize',
+                            flex: 1
+                          }}>
+                            {key.replace(/_/g, ' ')}
+                          </span>
+                          <span style={{
+                            color: '#FDE68A', fontSize: '0.78rem',
+                            fontWeight: 500, textAlign: 'right'
+                          }}>
+                            {value}
+                          </span>
+                        </div>
+                      ))}
+                      <div style={{
+                        marginTop: 8, padding: '6px 10px',
+                        background: 'rgba(16,185,129,0.08)',
+                        borderRadius: 6, fontSize: '0.7rem',
+                        color: '#10B981'
+                      }}>
+                        💡 Aarogyasri scheme may cover costs at
+                        government hospitals
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* What to expect */}
+                {appointmentResult.what_to_expect && (
+                  <div style={{
+                    background: 'rgba(37,99,235,0.06)',
+                    border: '1px solid rgba(37,99,235,0.15)',
+                    borderRadius: 10, padding: '14px 16px'
+                  }}>
+                    <div style={{
+                      color: '#60A5FA', fontWeight: 700,
+                      fontSize: '0.75rem', marginBottom: 8,
+                      textTransform: 'uppercase', letterSpacing: '0.06em'
+                    }}>
+                      ℹ️ What to Expect During Visit
+                    </div>
+                    <p style={{
+                      color: '#D1D5DB', fontSize: '0.85rem',
+                      lineHeight: 1.6, margin: 0
+                    }}>
+                      {appointmentResult.what_to_expect}
+                    </p>
+                  </div>
+                )}
+
+                {/* AP Tip */}
+                {appointmentResult.tip && (
+                  <div style={{
+                    background: 'rgba(16,185,129,0.06)',
+                    border: '1px solid rgba(16,185,129,0.15)',
+                    borderRadius: 10, padding: '12px 16px',
+                    display: 'flex', gap: 10, alignItems: 'flex-start'
+                  }}>
+                    <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>
+                      💡
+                    </span>
+                    <p style={{
+                      color: '#A7F3D0', fontSize: '0.82rem',
+                      lineHeight: 1.6, margin: 0
+                    }}>
+                      {appointmentResult.tip}
+                    </p>
+                  </div>
+                )}
+
+                {/* Hospitals */}
+                {appointmentResult.hospitals?.length > 0 && (
+                  <div style={{
+                    background: '#1A1D27',
+                    border: '1px solid #2A2D3A',
+                    borderRadius: 10, padding: '14px 16px'
+                  }}>
+                    <div style={{
+                      color: '#F59E0B', fontWeight: 700,
+                      fontSize: '0.75rem', marginBottom: 10,
+                      textTransform: 'uppercase', letterSpacing: '0.06em'
+                    }}>
+                      🏥 Recommended Facilities in {appointmentCity}
+                    </div>
+                    {appointmentResult.hospitals.map((h, i) => (
+                      <div key={i} style={{
+                        color: '#D1D5DB', fontSize: '0.82rem',
+                        marginBottom: 4, display: 'flex',
+                        alignItems: 'flex-start', gap: 6
+                      }}>
+                        <span style={{ color: '#F59E0B', flexShrink: 0 }}>
+                          🏥
+                        </span>
+                        <span>{h}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Disclaimer */}
+                <div style={{
+                  fontSize: '0.7rem', color: '#6B7280',
+                  padding: '8px 12px',
+                  background: 'rgba(107,114,128,0.05)',
+                  borderRadius: 8, lineHeight: 1.5
+                }}>
+                  ⚕️ This guide is AI-generated for informational purposes.
+                  Always consult a qualified doctor for diagnosis and treatment.
+                  In case of emergency, call 108 (ambulance) immediately.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Messages */}
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div ref={scrollRef} style={{ 
+          flex: 1, overflowY: 'auto', padding: '20px 16px', 
+          display: appointmentMode ? 'none' : 'flex', flexDirection: 'column', gap: 14 
+        }}>
           {messages.length <= 1 && !loading && (
             <div className="empty-state" style={{ flex: 1, justifyContent: 'center' }}>
               <div className="empty-state-icon">🤖</div>
@@ -469,43 +1061,45 @@ const Chat = () => {
         </div>
 
         {/* Input */}
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #2A2D3A', background: 'rgba(26,29,39,.95)', flexShrink: 0 }}>
-          <form onSubmit={handleSend} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-            {/* Fix 5: File upload button */}
-            <>
+        {!appointmentMode && (
+          <div style={{ padding: '12px 16px', borderTop: '1px solid #2A2D3A', background: 'rgba(26,29,39,.95)', flexShrink: 0 }}>
+            <form onSubmit={handleSend} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              {/* Fix 5: File upload button */}
+              <>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  accept=".jpg,.jpeg,.png,.pdf"
+                  onChange={handleFileUpload}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Upload medical report"
+                  disabled={loading}
+                >
+                  <Paperclip size={15} />
+                </button>
+              </>
               <input
-                type="file"
-                ref={fileInputRef}
-                style={{ display: 'none' }}
-                accept=".jpg,.jpeg,.png,.pdf"
-                onChange={handleFileUpload}
-              />
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => fileInputRef.current?.click()}
-                title="Upload medical report"
+                className="form-input"
+                placeholder={language === 'telugu' ? 'ఆరోగ్య ప్రశ్న అడగండి...' : 'Ask a health question...'}
+                value={input}
+                onChange={e => setInput(e.target.value)}
                 disabled={loading}
-              >
-                <Paperclip size={15} />
+                style={{ flex: 1, fontSize: '16px' }}
+              />
+              <button type="submit" className="btn btn-primary" disabled={!input.trim() || loading}>
+                <Send size={15} />
               </button>
-            </>
-            <input
-              className="form-input"
-              placeholder={language === 'telugu' ? 'ఆరోగ్య ప్రశ్న అడగండి...' : 'Ask a health question...'}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              disabled={loading}
-              style={{ flex: 1, fontSize: '16px' }}
-            />
-            <button type="submit" className="btn btn-primary" disabled={!input.trim() || loading}>
-              <Send size={15} />
-            </button>
-          </form>
-          <div style={{ fontSize: '0.68rem', color: '#6B7280', textAlign: 'center', marginTop: 6 }}>
-            Healthora is for informational purposes only — not a substitute for medical advice
+            </form>
+            <div style={{ fontSize: '0.68rem', color: '#6B7280', textAlign: 'center', marginTop: 6 }}>
+              Healthora is for informational purposes only — not a substitute for medical advice
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <style>{`
         @media (max-width: 768px) {

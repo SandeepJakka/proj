@@ -222,6 +222,12 @@ const Reminders = () => {
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  const [priceOpen, setPriceOpen] = useState(false)
+  const [priceInput, setPriceInput] = useState('')
+  const [priceLoading, setPriceLoading] = useState(false)
+  const [priceResult, setPriceResult] = useState(null)
+  const [priceLang, setPriceLang] = useState('english')
+
   // Prescription scan state
   const [scanning, setScanning] = useState(false)
   const [scannedMedicines, setScannedMedicines] = useState([])
@@ -251,6 +257,48 @@ const Reminders = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handlePriceCheck = async (medicines) => {
+    if (!medicines || medicines.length === 0) {
+      toast.error('Please enter at least one medicine name')
+      return
+    }
+    setPriceLoading(true)
+    setPriceResult(null)
+    try {
+      const token = localStorage.getItem('access_token')
+      const res = await fetch(
+        'http://localhost:8000/api/medicines/price-check',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            medicines: medicines,
+            language: priceLang
+          })
+        }
+      )
+      const data = await res.json()
+      if (data.success) {
+        setPriceResult(data.data)
+      } else {
+        toast.error(data.error || 'Failed to fetch prices')
+      }
+    } catch {
+      toast.error('Connection error. Please try again.')
+    } finally {
+      setPriceLoading(false)
+    }
+  }
+
+  const getMedicinesFromReminders = () => {
+    return reminders
+      .filter(r => r.is_active)
+      .map(r => r.medicine_name + (r.dosage ? ` ${r.dosage}` : ''))
   }
 
   if (loading) return (
@@ -464,6 +512,26 @@ const Reminders = () => {
             {scanning ? t('rem_scanning') : t('rem_scan')}
           </button>
           <button
+            onClick={() => {
+              setPriceOpen(true)
+              setPriceResult(null)
+              setPriceInput('')
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: 'clamp(8px, 2vw, 10px) clamp(12px, 3vw, 18px)',
+              borderRadius: 10,
+              border: '1.5px solid rgba(245,158,11,0.4)',
+              background: 'rgba(245,158,11,0.08)',
+              color: '#F59E0B', cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 'clamp(0.75rem, 2.5vw, 0.85rem)',
+              transition: 'all 0.2s'
+            }}
+          >
+            💰 Price Check
+          </button>
+          <button
             onClick={() => setShowForm(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
@@ -622,6 +690,651 @@ const Reminders = () => {
           >
             📸 {t('rem_wizard_scan_another')}
           </button>
+        </div>
+      )}
+
+      {/* ── Price Check Modal ───────────────────── */}
+      {priceOpen && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'center',
+          zIndex: 1000, padding: '20px',
+          overflowY: 'auto'
+        }} onClick={() => !priceLoading && setPriceOpen(false)}>
+          <div style={{
+            background: '#1A1D27',
+            border: '1px solid #2A2D3A',
+            borderRadius: 16, padding: 0,
+            width: '100%', maxWidth: 680,
+            marginTop: 20, marginBottom: 20,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.6)'
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #2A2D3A',
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#0F1117',
+              borderRadius: '16px 16px 0 0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.3rem' }}>💰</span>
+                <div>
+                  <div style={{
+                    fontWeight: 700, color: '#F8F9FA', fontSize: '1rem'
+                  }}>
+                    Medicine Price Comparator
+                  </div>
+                  <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                    Find cheaper alternatives in India
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setPriceOpen(false)}
+                disabled={priceLoading}
+                style={{
+                  background: 'rgba(239,68,68,0.1)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 8, color: '#EF4444',
+                  cursor: 'pointer', padding: '6px 12px',
+                  fontSize: '0.8rem', fontWeight: 600
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div style={{ padding: 24 }}>
+
+              {/* Input section — only show when no result */}
+              {!priceResult && (
+                <>
+                  {/* Language toggle */}
+                  <div style={{
+                    display: 'flex', gap: 8, marginBottom: 16,
+                    alignItems: 'center'
+                  }}>
+                    <span style={{
+                      color: '#9CA3AF', fontSize: '0.78rem'
+                    }}>
+                      Language:
+                    </span>
+                    {['english', 'telugu'].map(lang => (
+                      <button
+                        key={lang}
+                        onClick={() => setPriceLang(lang)}
+                        style={{
+                          padding: '4px 12px', borderRadius: 6,
+                          border: priceLang === lang
+                            ? '1.5px solid #F59E0B'
+                            : '1px solid #2A2D3A',
+                          background: priceLang === lang
+                            ? 'rgba(245,158,11,0.15)' : 'transparent',
+                          color: priceLang === lang
+                            ? '#F59E0B' : '#9CA3AF',
+                          cursor: 'pointer', fontSize: '0.78rem',
+                          fontWeight: priceLang === lang ? 600 : 400
+                        }}
+                      >
+                        {lang === 'english' ? '🇬🇧 English' : '🇮🇳 Telugu'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Auto-fill from reminders */}
+                  {reminders.filter(r => r.is_active).length > 0 && (
+                    <div style={{
+                      background: 'rgba(37,99,235,0.06)',
+                      border: '1px solid rgba(37,99,235,0.15)',
+                      borderRadius: 10, padding: '14px 16px',
+                      marginBottom: 16
+                    }}>
+                      <div style={{
+                        color: '#60A5FA', fontWeight: 600,
+                        fontSize: '0.82rem', marginBottom: 8
+                      }}>
+                        ⚡ Quick Check — Your Active Reminders
+                      </div>
+                      <div style={{
+                        display: 'flex', flexWrap: 'wrap', gap: 6,
+                        marginBottom: 12
+                      }}>
+                        {reminders
+                          .filter(r => r.is_active)
+                          .map((r, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(37,99,235,0.1)',
+                              border: '1px solid rgba(37,99,235,0.2)',
+                              borderRadius: 6, padding: '3px 10px',
+                              color: '#93C5FD', fontSize: '0.75rem'
+                            }}>
+                              💊 {r.medicine_name}
+                              {r.dosage ? ` ${r.dosage}` : ''}
+                            </span>
+                          ))}
+                      </div>
+                      <button
+                        onClick={() => handlePriceCheck(
+                          getMedicinesFromReminders()
+                        )}
+                        disabled={priceLoading}
+                        style={{
+                          padding: '8px 18px', borderRadius: 8,
+                          background: '#2563EB', border: 'none',
+                          color: '#fff', cursor: 'pointer',
+                          fontWeight: 600, fontSize: '0.82rem',
+                          display: 'flex', alignItems: 'center', gap: 6
+                        }}
+                      >
+                        🔍 Check Prices for All My Medicines
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Divider */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center',
+                    gap: 12, marginBottom: 16
+                  }}>
+                    <div style={{
+                      flex: 1, height: 1, background: '#2A2D3A'
+                    }} />
+                    <span style={{
+                      color: '#6B7280', fontSize: '0.75rem'
+                    }}>
+                      OR
+                    </span>
+                    <div style={{
+                      flex: 1, height: 1, background: '#2A2D3A'
+                    }} />
+                  </div>
+
+                  {/* Manual input */}
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{
+                      color: '#9CA3AF', fontSize: '0.8rem',
+                      fontWeight: 600, display: 'block', marginBottom: 8
+                    }}>
+                      ✏️ Type medicine names (one per line)
+                    </label>
+                    <textarea
+                      value={priceInput}
+                      onChange={e => setPriceInput(e.target.value)}
+                      placeholder={
+                        'Metformin 500mg\nAmlodipine 5mg\nAtorvastatin 10mg'
+                      }
+                      rows={4}
+                      style={{
+                        width: '100%', background: '#0F1117',
+                        border: '1px solid #2A2D3A', borderRadius: 8,
+                        padding: '10px 12px', color: '#F8F9FA',
+                        fontSize: '16px', resize: 'vertical',
+                        fontFamily: 'inherit', lineHeight: 1.6
+                      }}
+                    />
+                    <p style={{
+                      color: '#6B7280', fontSize: '0.72rem', marginTop: 4
+                    }}>
+                      Include dosage if known (e.g. Metformin 500mg)
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const meds = priceInput
+                        .split('\n')
+                        .map(m => m.trim())
+                        .filter(Boolean)
+                      handlePriceCheck(meds)
+                    }}
+                    disabled={priceLoading || !priceInput.trim()}
+                    style={{
+                      width: '100%', padding: '12px',
+                      background: priceLoading || !priceInput.trim()
+                        ? 'rgba(245,158,11,0.3)' : '#F59E0B',
+                      border: 'none', borderRadius: 10,
+                      color: '#000', cursor: priceLoading || !priceInput.trim()
+                        ? 'not-allowed' : 'pointer',
+                      fontWeight: 700, fontSize: '0.9rem',
+                      display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: 10
+                    }}
+                  >
+                    {priceLoading ? (
+                      <>
+                        <div style={{
+                          width: 18, height: 18,
+                          border: '2px solid rgba(0,0,0,0.3)',
+                          borderTop: '2px solid #000',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                        Checking prices...
+                      </>
+                    ) : (
+                      '💰 Check Medicine Prices'
+                    )}
+                  </button>
+                </>
+              )}
+
+              {/* Loading state */}
+              {priceLoading && (
+                <div style={{
+                  textAlign: 'center', padding: 48, color: '#9CA3AF'
+                }}>
+                  <div style={{
+                    width: 44, height: 44, margin: '0 auto 16px',
+                    border: '3px solid #2A2D3A',
+                    borderTop: '3px solid #F59E0B',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <p style={{ fontSize: '0.875rem' }}>
+                    Comparing prices across Indian pharmacies...
+                  </p>
+                  <p style={{
+                    fontSize: '0.78rem', color: '#6B7280', marginTop: 4
+                  }}>
+                    Finding generic alternatives and Jan Aushadhi prices
+                  </p>
+                </div>
+              )}
+
+              {/* Results */}
+              {priceResult && !priceLoading && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 16
+                }}>
+
+                  {/* Reset button */}
+                  <button
+                    onClick={() => {
+                      setPriceResult(null)
+                      setPriceInput('')
+                    }}
+                    style={{
+                      alignSelf: 'flex-start',
+                      padding: '6px 14px', borderRadius: 8,
+                      background: 'rgba(107,114,128,0.1)',
+                      border: '1px solid #2A2D3A',
+                      color: '#9CA3AF', cursor: 'pointer',
+                      fontSize: '0.78rem'
+                    }}
+                  >
+                    ← Check Different Medicines
+                  </button>
+
+                  {/* Savings summary banner */}
+                  {priceResult.total_savings && (
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.06))',
+                      border: '1px solid rgba(16,185,129,0.25)',
+                      borderRadius: 12, padding: '16px 20px',
+                      display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', flexWrap: 'wrap', gap: 12
+                    }}>
+                      <div>
+                        <div style={{
+                          color: '#10B981', fontWeight: 700,
+                          fontSize: '0.82rem', marginBottom: 4
+                        }}>
+                          💰 Monthly Savings Potential
+                        </div>
+                        <div style={{
+                          color: '#F8F9FA', fontSize: '0.8rem'
+                        }}>
+                          Brand: {priceResult.total_brand_cost} →
+                          Generic: {priceResult.total_generic_cost}
+                        </div>
+                      </div>
+                      <div style={{
+                        background: 'rgba(16,185,129,0.2)',
+                        border: '1px solid rgba(16,185,129,0.3)',
+                        borderRadius: 10, padding: '8px 16px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{
+                          color: '#10B981', fontWeight: 800,
+                          fontSize: '1.2rem'
+                        }}>
+                          {priceResult.total_savings}
+                        </div>
+                        <div style={{
+                          color: '#9CA3AF', fontSize: '0.65rem'
+                        }}>
+                          saved/month
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary tip */}
+                  {priceResult.summary_tip && (
+                    <div style={{
+                      background: 'rgba(245,158,11,0.06)',
+                      border: '1px solid rgba(245,158,11,0.15)',
+                      borderRadius: 10, padding: '10px 14px',
+                      display: 'flex', gap: 8,
+                      alignItems: 'flex-start'
+                    }}>
+                      <span style={{ flexShrink: 0 }}>💡</span>
+                      <p style={{
+                        color: '#FDE68A', fontSize: '0.82rem',
+                        lineHeight: 1.5, margin: 0
+                      }}>
+                        {priceResult.summary_tip}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Medicine cards */}
+                  {priceResult.medicines?.map((med, idx) => (
+                    <div key={idx} style={{
+                      background: '#0F1117',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 12, overflow: 'hidden'
+                    }}>
+                      {/* Medicine header */}
+                      <div style={{
+                        padding: '14px 18px',
+                        borderBottom: '1px solid #2A2D3A',
+                        display: 'flex', justifyContent: 'space-between',
+                        alignItems: 'center', flexWrap: 'wrap', gap: 8,
+                        background: '#1A1D27'
+                      }}>
+                        <div>
+                          <div style={{
+                            color: '#F8F9FA', fontWeight: 700,
+                            fontSize: '0.95rem'
+                          }}>
+                            💊 {med.name}
+                          </div>
+                          <div style={{
+                            color: '#9CA3AF', fontSize: '0.75rem',
+                            marginTop: 2
+                          }}>
+                            {med.generic_name && `Generic: ${med.generic_name}`}
+                            {med.category && ` · ${med.category}`}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {med.jan_aushadhi_available && (
+                            <span style={{
+                              background: 'rgba(16,185,129,0.15)',
+                              color: '#10B981', fontSize: '0.68rem',
+                              padding: '2px 8px', borderRadius: 6,
+                              fontWeight: 700
+                            }}>
+                              ✓ Jan Aushadhi
+                            </span>
+                          )}
+                          {med.prescription_required && (
+                            <span style={{
+                              background: 'rgba(239,68,68,0.1)',
+                              color: '#EF4444', fontSize: '0.68rem',
+                              padding: '2px 8px', borderRadius: 6,
+                              fontWeight: 600
+                            }}>
+                              Rx Required
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ padding: '14px 18px' }}>
+                        {/* Price comparison grid */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                          gap: 10, marginBottom: 14
+                        }}>
+                          <div style={{
+                            background: 'rgba(239,68,68,0.08)',
+                            border: '1px solid rgba(239,68,68,0.15)',
+                            borderRadius: 8, padding: '10px 12px',
+                            textAlign: 'center'
+                          }}>
+                            <div style={{
+                              color: '#9CA3AF', fontSize: '0.65rem',
+                              fontWeight: 600, marginBottom: 4,
+                              textTransform: 'uppercase'
+                            }}>
+                              Brand Price
+                            </div>
+                            <div style={{
+                              color: '#FCA5A5', fontWeight: 700,
+                              fontSize: '1rem'
+                            }}>
+                              {med.brand_price || '—'}
+                            </div>
+                            {med.brand_name && (
+                              <div style={{
+                                color: '#6B7280', fontSize: '0.65rem',
+                                marginTop: 2
+                              }}>
+                                {med.brand_name}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{
+                            background: 'rgba(16,185,129,0.08)',
+                            border: '1px solid rgba(16,185,129,0.2)',
+                            borderRadius: 8, padding: '10px 12px',
+                            textAlign: 'center'
+                          }}>
+                            <div style={{
+                              color: '#9CA3AF', fontSize: '0.65rem',
+                              fontWeight: 600, marginBottom: 4,
+                              textTransform: 'uppercase'
+                            }}>
+                              Generic Price
+                            </div>
+                            <div style={{
+                              color: '#34D399', fontWeight: 700,
+                              fontSize: '1rem'
+                            }}>
+                              {med.generic_price || '—'}
+                            </div>
+                            {med.savings_percent && (
+                              <div style={{
+                                color: '#10B981', fontSize: '0.65rem',
+                                marginTop: 2
+                              }}>
+                                Save {med.savings_percent}
+                              </div>
+                            )}
+                          </div>
+
+                          {med.jan_aushadhi_price && (
+                            <div style={{
+                              background: 'rgba(37,99,235,0.08)',
+                              border: '1px solid rgba(37,99,235,0.2)',
+                              borderRadius: 8, padding: '10px 12px',
+                              textAlign: 'center'
+                            }}>
+                              <div style={{
+                                color: '#9CA3AF', fontSize: '0.65rem',
+                                fontWeight: 600, marginBottom: 4,
+                                textTransform: 'uppercase'
+                              }}>
+                                Jan Aushadhi
+                              </div>
+                              <div style={{
+                                color: '#60A5FA', fontWeight: 700,
+                                fontSize: '1rem'
+                              }}>
+                                {med.jan_aushadhi_price}
+                              </div>
+                              <div style={{
+                                color: '#6B7280', fontSize: '0.65rem',
+                                marginTop: 2
+                              }}>
+                                Govt Store
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Online pharmacy prices */}
+                        {med.online_prices && (
+                          <div style={{ marginBottom: 14 }}>
+                            <div style={{
+                              color: '#9CA3AF', fontSize: '0.72rem',
+                              fontWeight: 600, marginBottom: 8,
+                              textTransform: 'uppercase', letterSpacing: '0.04em'
+                            }}>
+                              🛒 Online Pharmacies
+                            </div>
+                            <div style={{
+                              display: 'flex', gap: 8, flexWrap: 'wrap'
+                            }}>
+                              {Object.entries(med.online_prices)
+                                .filter(([_, v]) => v)
+                                .map(([platform, price]) => (
+                                <div key={platform} style={{
+                                  background: 'rgba(255,255,255,0.04)',
+                                  border: '1px solid #2A2D3A',
+                                  borderRadius: 8, padding: '6px 12px',
+                                  display: 'flex', alignItems: 'center',
+                                  gap: 6
+                                }}>
+                                  <span style={{
+                                    color: '#9CA3AF', fontSize: '0.72rem',
+                                    textTransform: 'capitalize'
+                                  }}>
+                                    {platform}:
+                                  </span>
+                                  <span style={{
+                                    color: '#F8F9FA', fontWeight: 600,
+                                    fontSize: '0.78rem'
+                                  }}>
+                                    {price}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Alternatives */}
+                        {med.alternatives?.length > 0 && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{
+                              color: '#9CA3AF', fontSize: '0.72rem',
+                              fontWeight: 600, marginBottom: 8,
+                              textTransform: 'uppercase', letterSpacing: '0.04em'
+                            }}>
+                              🔄 Cheaper Alternatives
+                            </div>
+                            <div style={{
+                              display: 'flex', flexDirection: 'column',
+                              gap: 6
+                            }}>
+                              {med.alternatives.map((alt, ai) => (
+                                <div key={ai} style={{
+                                  background: 'rgba(245,158,11,0.06)',
+                                  border: '1px solid rgba(245,158,11,0.12)',
+                                  borderRadius: 8, padding: '8px 12px',
+                                  display: 'flex', justifyContent: 'space-between',
+                                  alignItems: 'flex-start', gap: 8,
+                                  flexWrap: 'wrap'
+                                }}>
+                                  <div>
+                                    <span style={{
+                                      color: '#F8F9FA', fontWeight: 600,
+                                      fontSize: '0.82rem'
+                                    }}>
+                                      {alt.name}
+                                    </span>
+                                    <span style={{
+                                      background: alt.type === 'generic'
+                                        ? 'rgba(16,185,129,0.15)'
+                                        : 'rgba(139,92,246,0.15)',
+                                      color: alt.type === 'generic'
+                                        ? '#10B981' : '#A78BFA',
+                                      fontSize: '0.62rem',
+                                      padding: '1px 6px', borderRadius: 4,
+                                      marginLeft: 6, fontWeight: 600,
+                                      textTransform: 'capitalize'
+                                    }}>
+                                      {alt.type}
+                                    </span>
+                                    {alt.note && (
+                                      <div style={{
+                                        color: '#9CA3AF', fontSize: '0.72rem',
+                                        marginTop: 2
+                                      }}>
+                                        {alt.note}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span style={{
+                                    color: '#34D399', fontWeight: 700,
+                                    fontSize: '0.85rem', flexShrink: 0
+                                  }}>
+                                    {alt.price}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Buying tip */}
+                        {med.buying_tip && (
+                          <div style={{
+                            background: 'rgba(37,99,235,0.06)',
+                            border: '1px solid rgba(37,99,235,0.12)',
+                            borderRadius: 8, padding: '8px 12px',
+                            display: 'flex', gap: 6,
+                            alignItems: 'flex-start'
+                          }}>
+                            <span style={{ flexShrink: 0, fontSize: '0.85rem' }}>
+                              💡
+                            </span>
+                            <span style={{
+                              color: '#93C5FD', fontSize: '0.75rem',
+                              lineHeight: 1.5
+                            }}>
+                              {med.buying_tip}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Jan Aushadhi note */}
+                  <div style={{
+                    background: 'rgba(16,185,129,0.05)',
+                    border: '1px solid rgba(16,185,129,0.12)',
+                    borderRadius: 10, padding: '12px 16px',
+                    fontSize: '0.75rem', color: '#9CA3AF',
+                    lineHeight: 1.6
+                  }}>
+                    🏥 <strong style={{ color: '#10B981' }}>
+                      Jan Aushadhi Stores
+                    </strong> — Government generic medicine stores
+                    available in Vijayawada, Visakhapatnam, Tirupati,
+                    Guntur and other AP cities. Prices up to 90% cheaper
+                    than branded medicines. Find nearest store at
+                    janaushadhi.gov.in
+                    <br /><br />
+                    ⚕️ Prices are approximate estimates.
+                    Always consult your doctor before switching medicines.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

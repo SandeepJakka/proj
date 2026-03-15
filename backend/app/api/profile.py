@@ -18,6 +18,12 @@ class HealthProfileBase(BaseModel):
     dietary_preferences: Optional[str] = None
     known_conditions: Optional[str] = None
     allergies: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    primary_doctor_name: Optional[str] = None
+    primary_doctor_phone: Optional[str] = None
+    current_medicines: Optional[str] = None
 
 class HealthProfileCreate(HealthProfileBase):
     pass
@@ -184,3 +190,76 @@ def get_public_profile(username: str, db: Session = Depends(get_db)):
 
     return result
 
+
+@router.post("/migrate-emergency-fields")
+def migrate_emergency_fields(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Add emergency contact columns if they don't exist."""
+    from sqlalchemy import text
+    fields = [
+        ("emergency_contact_name", "VARCHAR"),
+        ("emergency_contact_phone", "VARCHAR"),
+        ("emergency_contact_relation", "VARCHAR"),
+        ("primary_doctor_name", "VARCHAR"),
+        ("primary_doctor_phone", "VARCHAR"),
+        ("current_medicines", "TEXT"),
+    ]
+    for col, col_type in fields:
+        try:
+            db.execute(text(
+                f"ALTER TABLE health_profiles "
+                f"ADD COLUMN IF NOT EXISTS {col} {col_type}"
+            ))
+        except Exception:
+            pass
+    db.commit()
+    return {"message": "Emergency fields ready"}
+
+
+@router.get("/emergency/{username}")
+def get_emergency_card(username: str, db: Session = Depends(get_db)):
+    """
+    Public endpoint for emergency card.
+    Returns only emergency-relevant fields.
+    No sensitive data (email, password, reports).
+    """
+    user = db.query(models.User).filter(
+        models.User.username == username
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="Emergency card not found"
+        )
+
+    profile = crud.get_health_profile(db, user_id=user.id)
+
+    # Calculate BMI if available
+    bmi = None
+    if profile and profile.weight_kg and profile.height_cm:
+        bmi = round(
+            profile.weight_kg / ((profile.height_cm / 100) ** 2), 1
+        )
+
+    return {
+        "full_name": user.full_name or "Unknown",
+        "blood_type": profile.blood_type if profile else None,
+        "age": profile.age if profile else None,
+        "gender": profile.gender if profile else None,
+        "weight_kg": profile.weight_kg if profile else None,
+        "height_cm": profile.height_cm if profile else None,
+        "bmi": bmi,
+        "allergies": profile.allergies if profile else None,
+        "known_conditions": profile.known_conditions if profile else None,
+        "current_medicines": profile.current_medicines if profile else None,
+        "emergency_contact_name": profile.emergency_contact_name if profile else None,
+        "emergency_contact_phone": profile.emergency_contact_phone if profile else None,
+        "emergency_contact_relation": profile.emergency_contact_relation if profile else None,
+        "primary_doctor_name": profile.primary_doctor_name if profile else None,
+        "primary_doctor_phone": profile.primary_doctor_phone if profile else None,
+        "username": username,
+        "generated_at": __import__('datetime').datetime.utcnow().isoformat()
+    }

@@ -99,6 +99,13 @@ const Reports = () => {
   const [compareResult, setCompareResult] = useState(null);
   const [comparing, setComparing] = useState(false);
   const [compareLanguage, setCompareLanguage] = useState('english');
+  const [secondOpinionOpen, setSecondOpinionOpen] = useState(false)
+  const [secondOpinionResult, setSecondOpinionResult] = useState(null)
+  const [secondOpinionLoading, setSecondOpinionLoading] = useState(false)
+  const [decodeOpen, setDecodeOpen] = useState(false)
+  const [decodeResult, setDecodeResult] = useState(null)
+  const [decodeLoading, setDecodeLoading] = useState(false)
+  const [aiLanguage, setAiLanguage] = useState('english')
 
   useEffect(() => { fetchReports(); }, []);
 
@@ -199,6 +206,58 @@ const Reports = () => {
       setComparing(false);
     }
   };
+
+  const handleSecondOpinion = async () => {
+    if (!selectedReport) return
+    setSecondOpinionLoading(true)
+    setSecondOpinionResult(null)
+    try {
+      const token = localStorage.getItem('access_token')
+      const res = await fetch(
+        `http://localhost:8000/api/reports/${selectedReport.id}/second-opinion?language=${aiLanguage}`,
+        {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      )
+      const data = await res.json()
+      if (data.success) {
+        setSecondOpinionResult(data.data)
+      } else {
+        toast.error(data.error || 'Failed to get second opinion')
+      }
+    } catch {
+      toast.error('Connection error. Please try again.')
+    } finally {
+      setSecondOpinionLoading(false)
+    }
+  }
+
+  const handleDecode = async () => {
+    if (!selectedReport) return
+    setDecodeLoading(true)
+    setDecodeResult(null)
+    try {
+      const token = localStorage.getItem('access_token')
+      const res = await fetch(
+        `http://localhost:8000/api/reports/${selectedReport.id}/decode-discharge?language=${aiLanguage}`,
+        {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      )
+      const data = await res.json()
+      if (data.success) {
+        setDecodeResult(data.data)
+      } else {
+        toast.error(data.error || 'Failed to decode summary')
+      }
+    } catch {
+      toast.error('Connection error. Please try again.')
+    } finally {
+      setDecodeLoading(false)
+    }
+  }
 
   const openCompareModal = () => {
     setCompareOpen(true);
@@ -426,6 +485,84 @@ const Reports = () => {
                   >
                     👁 View Report
                   </button>
+                  <div style={{
+                    display: 'flex', alignItems: 'center',
+                    gap: 6, marginRight: 4
+                  }}>
+                    {['english', 'telugu'].map(lang => (
+                      <button
+                        key={lang}
+                        onClick={() => setAiLanguage(lang)}
+                        style={{
+                          padding: '4px 10px', borderRadius: 6,
+                          border: aiLanguage === lang
+                            ? '1.5px solid #2563EB'
+                            : '1px solid #2A2D3A',
+                          background: aiLanguage === lang
+                            ? 'rgba(37,99,235,0.15)' : 'transparent',
+                          color: aiLanguage === lang ? '#60A5FA' : '#6B7280',
+                          cursor: 'pointer', fontSize: '0.7rem',
+                          fontWeight: aiLanguage === lang ? 600 : 400
+                        }}
+                      >
+                        {lang === 'english' ? 'EN' : 'తె'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setSecondOpinionOpen(true)
+                      setSecondOpinionResult(null)
+                      handleSecondOpinion()
+                    }}
+                    disabled={secondOpinionLoading || !selectedReport?.has_analysis}
+                    title={!selectedReport?.has_analysis
+                      ? 'Generate explanation first'
+                      : 'Get AI second opinion'}
+                    style={{
+                      background: 'rgba(139,92,246,0.1)',
+                      border: '1px solid rgba(139,92,246,0.2)',
+                      borderRadius: 8, padding: '6px 14px',
+                      color: secondOpinionLoading ? '#6B7280' : '#A78BFA',
+                      cursor: !selectedReport?.has_analysis
+                        ? 'not-allowed' : 'pointer',
+                      fontSize: '0.8rem', fontWeight: 500,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: !selectedReport?.has_analysis ? 0.5 : 1
+                    }}
+                  >
+                    {secondOpinionLoading
+                      ? '⏳ Analyzing...'
+                      : '🔍 Second Opinion'}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setDecodeOpen(true)
+                      setDecodeResult(null)
+                      handleDecode()
+                    }}
+                    disabled={decodeLoading || !selectedReport?.has_analysis}
+                    title={!selectedReport?.has_analysis
+                      ? 'Generate explanation first'
+                      : 'Decode discharge summary'}
+                    style={{
+                      background: 'rgba(16,185,129,0.1)',
+                      border: '1px solid rgba(16,185,129,0.2)',
+                      borderRadius: 8, padding: '6px 14px',
+                      color: decodeLoading ? '#6B7280' : '#34D399',
+                      cursor: !selectedReport?.has_analysis
+                        ? 'not-allowed' : 'pointer',
+                      fontSize: '0.8rem', fontWeight: 500,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: !selectedReport?.has_analysis ? 0.5 : 1
+                    }}
+                  >
+                    {decodeLoading
+                      ? '⏳ Decoding...'
+                      : '📋 Decode Summary'}
+                  </button>
                   <button
                     className="btn btn-primary btn-sm"
                     onClick={() => handleExplain(selectedReport.id)}
@@ -556,6 +693,751 @@ const Reports = () => {
           )}
         </div>
       </div>
+
+      {/* ── Second Opinion Modal ────────────────────────────────── */}
+      {secondOpinionOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 2000,
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'center',
+          padding: '20px', overflowY: 'auto'
+        }} onClick={() => !secondOpinionLoading && setSecondOpinionOpen(false)}>
+          <div style={{
+            background: '#1A1D27',
+            border: '1px solid #2A2D3A',
+            borderRadius: 16, width: '100%', maxWidth: 720,
+            marginTop: 20, marginBottom: 20,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.6)'
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #2A2D3A',
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#0F1117',
+              borderRadius: '16px 16px 0 0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.3rem' }}>🔍</span>
+                <div>
+                  <div style={{
+                    fontWeight: 700, color: '#F8F9FA', fontSize: '1rem'
+                  }}>
+                    Second Opinion
+                  </div>
+                  <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                    {selectedReport?.filename}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setSecondOpinionOpen(false)}
+                disabled={secondOpinionLoading}
+                style={{
+                  background: 'rgba(239,68,68,0.1)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 8, color: '#EF4444',
+                  cursor: 'pointer', padding: '6px 12px',
+                  fontSize: '0.8rem', fontWeight: 600
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div style={{ padding: 24 }}>
+              {/* Loading */}
+              {secondOpinionLoading && (
+                <div style={{
+                  textAlign: 'center', padding: 48,
+                  color: '#9CA3AF'
+                }}>
+                  <div style={{
+                    width: 44, height: 44, margin: '0 auto 16px',
+                    border: '3px solid #2A2D3A',
+                    borderTop: '3px solid #8B5CF6',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <p style={{ fontSize: '0.875rem' }}>
+                    AI is reviewing your report independently...
+                  </p>
+                </div>
+              )}
+
+              {/* Result */}
+              {secondOpinionResult && !secondOpinionLoading && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 14
+                }}>
+                  {/* Overall assessment */}
+                  <div style={{
+                    background: 'rgba(139,92,246,0.08)',
+                    border: '1px solid rgba(139,92,246,0.2)',
+                    borderRadius: 10, padding: '14px 16px'
+                  }}>
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', marginBottom: 8
+                    }}>
+                      <div style={{
+                        color: '#A78BFA', fontWeight: 700,
+                        fontSize: '0.75rem', textTransform: 'uppercase',
+                        letterSpacing: '0.06em'
+                      }}>
+                        🔍 Overall Assessment
+                      </div>
+                      {secondOpinionResult.confidence && (
+                        <span style={{
+                          background: secondOpinionResult.confidence === 'high'
+                            ? 'rgba(16,185,129,0.15)'
+                            : secondOpinionResult.confidence === 'medium'
+                              ? 'rgba(245,158,11,0.15)'
+                              : 'rgba(239,68,68,0.15)',
+                          color: secondOpinionResult.confidence === 'high'
+                            ? '#10B981'
+                            : secondOpinionResult.confidence === 'medium'
+                              ? '#F59E0B' : '#EF4444',
+                          fontSize: '0.68rem', fontWeight: 700,
+                          padding: '2px 8px', borderRadius: 6,
+                          textTransform: 'uppercase'
+                        }}>
+                          {secondOpinionResult.confidence} confidence
+                        </span>
+                      )}
+                    </div>
+                    <p style={{
+                      color: '#D1D5DB', fontSize: '0.875rem',
+                      lineHeight: 1.6, margin: 0
+                    }}>
+                      {secondOpinionResult.overall_assessment}
+                    </p>
+                  </div>
+
+                  {/* Concerns */}
+                  {secondOpinionResult.concerns?.length > 0 && (
+                    <div style={{
+                      background: '#1A1D27',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#F59E0B', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        ⚠️ Points of Concern
+                      </div>
+                      {secondOpinionResult.concerns.map((c, i) => (
+                        <div key={i} style={{
+                          padding: '10px 12px', marginBottom: 8,
+                          background: c.severity === 'high'
+                            ? 'rgba(239,68,68,0.08)'
+                            : c.severity === 'medium'
+                              ? 'rgba(245,158,11,0.08)'
+                              : 'rgba(107,114,128,0.08)',
+                          borderRadius: 8,
+                          borderLeft: `3px solid ${
+                            c.severity === 'high' ? '#EF4444'
+                            : c.severity === 'medium' ? '#F59E0B'
+                            : '#6B7280'
+                          }`
+                        }}>
+                          <div style={{
+                            color: '#F8F9FA', fontWeight: 600,
+                            fontSize: '0.82rem', marginBottom: 3
+                          }}>
+                            {c.finding}
+                          </div>
+                          <div style={{
+                            color: '#9CA3AF', fontSize: '0.78rem'
+                          }}>
+                            {c.reason}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Two column */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 12
+                  }}>
+                    {/* Questions */}
+                    {secondOpinionResult.questions_for_doctor?.length > 0 && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#60A5FA', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 10,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          ❓ Ask Your Doctor
+                        </div>
+                        {secondOpinionResult.questions_for_doctor.map((q, i) => (
+                          <div key={i} style={{
+                            color: '#D1D5DB', fontSize: '0.8rem',
+                            marginBottom: 6, display: 'flex',
+                            alignItems: 'flex-start', gap: 6
+                          }}>
+                            <span style={{
+                              color: '#2563EB', fontWeight: 700,
+                              flexShrink: 0, fontSize: '0.7rem'
+                            }}>
+                              {i + 1}.
+                            </span>
+                            {q}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Additional tests */}
+                    {secondOpinionResult.additional_tests?.length > 0 && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#10B981', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 10,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          🧪 Additional Tests
+                        </div>
+                        {secondOpinionResult.additional_tests.map((t, i) => (
+                          <div key={i} style={{
+                            color: '#D1D5DB', fontSize: '0.8rem',
+                            marginBottom: 6, display: 'flex',
+                            alignItems: 'flex-start', gap: 6
+                          }}>
+                            <span style={{ color: '#10B981', flexShrink: 0 }}>
+                              ✓
+                            </span>
+                            {t}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Lifestyle advice */}
+                    {secondOpinionResult.lifestyle_advice?.length > 0 && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#F59E0B', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 10,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          🌿 Lifestyle Advice
+                        </div>
+                        {secondOpinionResult.lifestyle_advice.map((a, i) => (
+                          <div key={i} style={{
+                            color: '#D1D5DB', fontSize: '0.8rem',
+                            marginBottom: 6, display: 'flex',
+                            alignItems: 'flex-start', gap: 6
+                          }}>
+                            <span style={{ color: '#F59E0B', flexShrink: 0 }}>
+                              •
+                            </span>
+                            {a}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Specialist referral */}
+                    {secondOpinionResult.specialist_referral?.needed && (
+                      <div style={{
+                        background: 'rgba(239,68,68,0.06)',
+                        border: '1px solid rgba(239,68,68,0.2)',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#EF4444', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 8,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          👨⚕️ Specialist Referral Recommended
+                        </div>
+                        <div style={{
+                          color: '#F8F9FA', fontWeight: 600,
+                          fontSize: '0.875rem', marginBottom: 4
+                        }}>
+                          {secondOpinionResult.specialist_referral.specialist}
+                        </div>
+                        <div style={{
+                          color: '#9CA3AF', fontSize: '0.78rem'
+                        }}>
+                          {secondOpinionResult.specialist_referral.reason}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Plain language summary */}
+                  {secondOpinionResult.summary && (
+                    <div style={{
+                      background: 'rgba(37,99,235,0.06)',
+                      border: '1px solid rgba(37,99,235,0.15)',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#60A5FA', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 8,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        📝 Plain Language Summary
+                      </div>
+                      <p style={{
+                        color: '#D1D5DB', fontSize: '0.875rem',
+                        lineHeight: 1.6, margin: 0
+                      }}>
+                        {secondOpinionResult.summary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Disclaimer */}
+                  <div style={{
+                    fontSize: '0.7rem', color: '#6B7280',
+                    padding: '8px 12px',
+                    background: 'rgba(107,114,128,0.05)',
+                    borderRadius: 8
+                  }}>
+                    ⚕️ This is an AI-generated second opinion for
+                    informational purposes only. It does not replace
+                    professional medical advice. Always consult your
+                    doctor for clinical decisions.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Discharge Decoder Modal ────────────────────────────────── */}
+      {decodeOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 2000,
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'center',
+          padding: '20px', overflowY: 'auto'
+        }} onClick={() => !decodeLoading && setDecodeOpen(false)}>
+          <div style={{
+            background: '#1A1D27',
+            border: '1px solid #2A2D3A',
+            borderRadius: 16, width: '100%', maxWidth: 720,
+            marginTop: 20, marginBottom: 20,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.6)'
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #2A2D3A',
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#0F1117',
+              borderRadius: '16px 16px 0 0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.3rem' }}>📋</span>
+                <div>
+                  <div style={{
+                    fontWeight: 700, color: '#F8F9FA', fontSize: '1rem'
+                  }}>
+                    Discharge Summary Decoder
+                  </div>
+                  <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                    {selectedReport?.filename}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setDecodeOpen(false)}
+                disabled={decodeLoading}
+                style={{
+                  background: 'rgba(239,68,68,0.1)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 8, color: '#EF4444',
+                  cursor: 'pointer', padding: '6px 12px',
+                  fontSize: '0.8rem', fontWeight: 600
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div style={{ padding: 24 }}>
+              {/* Loading */}
+              {decodeLoading && (
+                <div style={{
+                  textAlign: 'center', padding: 48, color: '#9CA3AF'
+                }}>
+                  <div style={{
+                    width: 44, height: 44, margin: '0 auto 16px',
+                    border: '3px solid #2A2D3A',
+                    borderTop: '3px solid #10B981',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  <p style={{ fontSize: '0.875rem' }}>
+                    Translating medical language into simple terms...
+                  </p>
+                </div>
+              )}
+
+              {/* Result */}
+              {decodeResult && !decodeLoading && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 14
+                }}>
+                  {/* Simple summary */}
+                  {decodeResult.simple_summary && (
+                    <div style={{
+                      background: 'rgba(16,185,129,0.08)',
+                      border: '1px solid rgba(16,185,129,0.2)',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#10B981', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 8,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        📋 In Simple Words
+                      </div>
+                      <p style={{
+                        color: '#D1D5DB', fontSize: '0.9rem',
+                        lineHeight: 1.7, margin: 0
+                      }}>
+                        {decodeResult.simple_summary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* What happened + diagnosis */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 12
+                  }}>
+                    {decodeResult.what_happened && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#60A5FA', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 8,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          🏥 What Happened
+                        </div>
+                        <p style={{
+                          color: '#D1D5DB', fontSize: '0.82rem',
+                          lineHeight: 1.6, margin: 0
+                        }}>
+                          {decodeResult.what_happened}
+                        </p>
+                      </div>
+                    )}
+                    {decodeResult.diagnosis && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#8B5CF6', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 8,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          🔬 Diagnosis
+                        </div>
+                        <p style={{
+                          color: '#D1D5DB', fontSize: '0.82rem',
+                          lineHeight: 1.6, margin: 0
+                        }}>
+                          {decodeResult.diagnosis}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Medicines */}
+                  {decodeResult.medicines?.length > 0 && (
+                    <div style={{
+                      background: '#1A1D27',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#F59E0B', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 12,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        💊 Your Medicines
+                      </div>
+                      {decodeResult.medicines.map((med, i) => (
+                        <div key={i} style={{
+                          padding: '10px 12px', marginBottom: 8,
+                          background: 'rgba(245,158,11,0.06)',
+                          border: '1px solid rgba(245,158,11,0.15)',
+                          borderRadius: 8
+                        }}>
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'flex-start', gap: 8, flexWrap: 'wrap'
+                          }}>
+                            <div style={{
+                              color: '#F8F9FA', fontWeight: 700,
+                              fontSize: '0.875rem'
+                            }}>
+                              {med.name}
+                            </div>
+                            {med.duration && (
+                              <span style={{
+                                background: 'rgba(245,158,11,0.15)',
+                                color: '#F59E0B', fontSize: '0.68rem',
+                                padding: '2px 8px', borderRadius: 6,
+                                fontWeight: 600, flexShrink: 0
+                              }}>
+                                {med.duration}
+                              </span>
+                            )}
+                          </div>
+                          {med.purpose && (
+                            <div style={{
+                              color: '#9CA3AF', fontSize: '0.78rem',
+                              marginTop: 3
+                            }}>
+                              Why: {med.purpose}
+                            </div>
+                          )}
+                          {med.how_to_take && (
+                            <div style={{
+                              color: '#D1D5DB', fontSize: '0.78rem',
+                              marginTop: 3
+                            }}>
+                              How: {med.how_to_take}
+                            </div>
+                          )}
+                          {med.important_note && (
+                            <div style={{
+                              color: '#FCA5A5', fontSize: '0.75rem',
+                              marginTop: 4, fontStyle: 'italic'
+                            }}>
+                              ⚠️ {med.important_note}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Warning signs */}
+                  {decodeResult.warning_signs?.length > 0 && (
+                    <div style={{
+                      background: 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.25)',
+                      borderRadius: 10, padding: '14px 16px'
+                    }}>
+                      <div style={{
+                        color: '#EF4444', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        🚨 Go to Hospital Immediately If:
+                      </div>
+                      {decodeResult.warning_signs.map((w, i) => (
+                        <div key={i} style={{
+                          color: '#FCA5A5', fontSize: '0.82rem',
+                          marginBottom: 6, display: 'flex',
+                          alignItems: 'flex-start', gap: 6
+                        }}>
+                          <span style={{ flexShrink: 0 }}>•</span>
+                          {w}
+                        </div>
+                      ))}
+                      <div style={{
+                        marginTop: 10, padding: '6px 10px',
+                        background: 'rgba(239,68,68,0.1)',
+                        borderRadius: 6, fontSize: '0.75rem',
+                        color: '#EF4444', fontWeight: 700
+                      }}>
+                        📞 Emergency: Call 108 immediately
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Three column grid */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 12
+                  }}>
+                    {/* Follow-up */}
+                    {decodeResult.followup?.length > 0 && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#60A5FA', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 10,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          📅 Follow-up Needed
+                        </div>
+                        {decodeResult.followup.map((f, i) => (
+                          <div key={i} style={{
+                            marginBottom: 8, paddingBottom: 8,
+                            borderBottom: i < decodeResult.followup.length - 1
+                              ? '1px solid #2A2D3A' : 'none'
+                          }}>
+                            <div style={{
+                              color: '#F8F9FA', fontSize: '0.8rem',
+                              fontWeight: 500
+                            }}>
+                              {f.what}
+                            </div>
+                            {f.when && (
+                              <div style={{
+                                color: '#F59E0B', fontSize: '0.72rem'
+                              }}>
+                                When: {f.when}
+                              </div>
+                            )}
+                            {f.where && (
+                              <div style={{
+                                color: '#9CA3AF', fontSize: '0.72rem'
+                              }}>
+                                Where: {f.where}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Activity restrictions */}
+                    {decodeResult.activity_restrictions?.length > 0 && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#8B5CF6', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 10,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          🚶 Activity Restrictions
+                        </div>
+                        {decodeResult.activity_restrictions.map((a, i) => (
+                          <div key={i} style={{
+                            color: '#D1D5DB', fontSize: '0.8rem',
+                            marginBottom: 6, display: 'flex',
+                            alignItems: 'flex-start', gap: 6
+                          }}>
+                            <span style={{
+                              color: '#8B5CF6', flexShrink: 0
+                            }}>✗</span>
+                            {a}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Diet instructions */}
+                    {decodeResult.diet_instructions?.length > 0 && (
+                      <div style={{
+                        background: '#1A1D27',
+                        border: '1px solid #2A2D3A',
+                        borderRadius: 10, padding: '14px 16px'
+                      }}>
+                        <div style={{
+                          color: '#10B981', fontWeight: 700,
+                          fontSize: '0.75rem', marginBottom: 10,
+                          textTransform: 'uppercase', letterSpacing: '0.06em'
+                        }}>
+                          🥗 Diet Instructions
+                        </div>
+                        {decodeResult.diet_instructions.map((d, i) => (
+                          <div key={i} style={{
+                            color: '#D1D5DB', fontSize: '0.8rem',
+                            marginBottom: 6, display: 'flex',
+                            alignItems: 'flex-start', gap: 6
+                          }}>
+                            <span style={{
+                              color: '#10B981', flexShrink: 0
+                            }}>•</span>
+                            {d}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Wound care */}
+                  {decodeResult.wound_care && (
+                    <div style={{
+                      background: 'rgba(245,158,11,0.06)',
+                      border: '1px solid rgba(245,158,11,0.15)',
+                      borderRadius: 10, padding: '12px 16px'
+                    }}>
+                      <div style={{
+                        color: '#F59E0B', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 6,
+                        textTransform: 'uppercase', letterSpacing: '0.06em'
+                      }}>
+                        🩹 Wound / Incision Care
+                      </div>
+                      <p style={{
+                        color: '#D1D5DB', fontSize: '0.82rem',
+                        lineHeight: 1.6, margin: 0
+                      }}>
+                        {decodeResult.wound_care}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Disclaimer */}
+                  <div style={{
+                    fontSize: '0.7rem', color: '#6B7280',
+                    padding: '8px 12px',
+                    background: 'rgba(107,114,128,0.05)',
+                    borderRadius: 8, lineHeight: 1.5
+                  }}>
+                    ⚕️ This decoded summary is AI-generated for
+                    informational purposes. Always follow your doctor's
+                    instructions. For emergencies call 108.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Compare Modal ────────────────────────────────── */}
       {compareOpen && (

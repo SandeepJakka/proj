@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, MessageSquare, ScanLine,
-  MapPin, Lightbulb, Activity, UserCircle, LogOut, Bell, X
+  MapPin, Lightbulb, Activity, UserCircle, LogOut, Bell, X, Shield
 } from 'lucide-react';
 import { useT } from '../context/LanguageContext';
 
@@ -20,6 +20,7 @@ const Sidebar = ({ open, onClose }) => {
     { label: t('nav_map'), path: '/map', icon: <MapPin size={18} /> },
     { label: t('nav_tips'), path: '/tips', icon: <Lightbulb size={18} /> },
     { label: t('nav_reminders'), path: '/reminders', icon: <Bell size={18} /> },
+    { label: 'Insurance', path: '/insurance', icon: <Shield size={18} /> },
     { label: t('nav_lifestyle'), path: '/lifestyle', icon: <Activity size={18} /> },
     { label: t('nav_profile'), path: '/profile', icon: <UserCircle size={18} /> },
   ];
