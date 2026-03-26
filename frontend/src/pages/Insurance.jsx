@@ -27,7 +27,7 @@ const Insurance = () => {
   const [claimLoading, setClaimLoading] = useState(false)
   const [claimResult, setClaimResult] = useState(null)
   const billFileRef = useRef(null)
-  const [uploadingBill, setUploadingBill] = useState(false)
+  const [selectedBillFile, setSelectedBillFile] = useState(null)
   const [claimLanguage, setClaimLanguage] = useState('english')
 
   // Chat state
@@ -96,43 +96,40 @@ const Insurance = () => {
 
   const handleCheckClaim = async () => {
     if (!selectedPolicy) { toast.error('Please select a policy first'); return }
-    if (!situation.trim()) { toast.error('Please describe your medical situation'); return }
+    if (!situation.trim() && !selectedBillFile) { toast.error('Please describe your medical situation or attach a bill'); return }
     setClaimLoading(true); setClaimResult(null)
+    const toastId = toast.loading(selectedBillFile ? 'Reading attached document and checking policy...' : 'Analyzing situation against policy...')
     try {
-      const res = await fetch(`${BASE}/insurance/check-claim`, {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ policy_id: selectedPolicy.id, situation, language: claimLanguage })
-      })
-      const data = await res.json()
-      if (data.success) setClaimResult(data.data)
-      else toast.error(data.error || 'Analysis failed')
-    } catch { toast.error('Connection error. Please try again.') }
-    finally { setClaimLoading(false) }
-  }
-
-  const handleBillUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file || !selectedPolicy) return
-    setUploadingBill(true); setClaimResult(null)
-    const toastId = toast.loading('Reading bill and checking policy...')
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('policy_id', selectedPolicy.id)
-      formData.append('situation', situation || 'Check if this bill is claimable')
-      formData.append('language', claimLanguage)
-      const res = await fetch(`${BASE}/insurance/check-claim-with-bill`, {
-        method: 'POST', headers: authHeaders(), body: formData
-      })
-      const data = await res.json()
-      if (data.success) { setClaimResult(data.data); toast.success('Bill analyzed!', { id: toastId }) }
-      else toast.error(data.error || 'Analysis failed', { id: toastId })
-    } catch { toast.error('Failed to analyze bill', { id: toastId }) }
-    finally {
-      setUploadingBill(false)
-      if (billFileRef.current) billFileRef.current.value = ''
+      let data = null;
+      if (selectedBillFile) {
+        const formData = new FormData()
+        formData.append('file', selectedBillFile)
+        formData.append('policy_id', selectedPolicy.id)
+        formData.append('situation', situation || 'Check if this attached bill/document is claimable.')
+        formData.append('language', claimLanguage)
+        const res = await fetch(`${BASE}/insurance/check-claim-with-bill`, {
+          method: 'POST', headers: authHeaders(), body: formData
+        })
+        data = await res.json()
+      } else {
+        const res = await fetch(`${BASE}/insurance/check-claim`, {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ policy_id: selectedPolicy.id, situation, language: claimLanguage })
+        })
+        data = await res.json()
+      }
+      
+      if (data.success) { 
+        setClaimResult(data.data); 
+        toast.success(selectedBillFile ? 'Document analyzed successfully!' : 'Analysis complete!', { id: toastId }) 
+      } else {
+        toast.error(data.error || 'Analysis failed', { id: toastId })
+      }
+    } catch { 
+      toast.error('Connection error. Please try again.', { id: toastId }) 
     }
+    finally { setClaimLoading(false) }
   }
 
   const handleChatSend = async (e) => {
@@ -455,12 +452,12 @@ const Insurance = () => {
                     <div style={{ background: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: 12, padding: 20 }}>
                       <div style={{ marginBottom: 16 }}>
                         <label style={{ color: '#9CA3AF', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: 8 }}>
-                          📝 Describe your medical situation
+                          📝 Describe your medical situation (Optional if attaching bill)
                         </label>
                         <textarea
                           value={situation}
                           onChange={e => setSituation(e.target.value)}
-                          placeholder="e.g. I was admitted to Apollo Hospital for 3 days with dengue fever. Total bill ₹45,000. Or upload your medical report/bill directly."
+                          placeholder="e.g. I was admitted to Apollo Hospital for 3 days with dengue fever. Total bill ₹45,000."
                           rows={4}
                           style={{
                             width: '100%', background: '#0F1117',
@@ -471,15 +468,17 @@ const Insurance = () => {
                           }}
                         />
                       </div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+                      
+                      {/* Unified Submit and Attach area */}
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16, alignItems: 'flex-start' }}>
                         <button
                           onClick={handleCheckClaim}
-                          disabled={claimLoading || !situation.trim()}
+                          disabled={claimLoading || (!situation.trim() && !selectedBillFile)}
                           style={{
-                            flex: 1, padding: '11px 20px', borderRadius: 10,
-                            background: claimLoading || !situation.trim() ? 'rgba(37,99,235,0.3)' : '#2563EB',
+                            flex: 1, padding: '0 20px', height: 44, borderRadius: 10,
+                            background: claimLoading || (!situation.trim() && !selectedBillFile) ? 'rgba(37,99,235,0.3)' : '#2563EB',
                             border: 'none', color: '#fff',
-                            cursor: claimLoading || !situation.trim() ? 'not-allowed' : 'pointer',
+                            cursor: claimLoading || (!situation.trim() && !selectedBillFile) ? 'not-allowed' : 'pointer',
                             fontWeight: 600, fontSize: '0.875rem',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
                           }}
@@ -490,29 +489,39 @@ const Insurance = () => {
                               border: '2px solid rgba(255,255,255,0.3)',
                               borderTop: '2px solid #fff',
                               borderRadius: '50%', animation: 'spin 1s linear infinite'
-                            }} /> Analyzing Policy...</>
+                            }} /> Analyzing...</>
                           ) : '🔍 Check Claim Eligibility'}
                         </button>
-                        <div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <input
                             ref={billFileRef} type="file"
                             style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={handleBillUpload}
+                            onChange={e => {
+                               if (e.target.files?.[0]) setSelectedBillFile(e.target.files[0])
+                            }}
                           />
                           <button
                             onClick={() => billFileRef.current?.click()}
-                            disabled={uploadingBill}
+                            disabled={claimLoading}
                             style={{
-                              padding: '11px 16px', borderRadius: 10,
-                              background: 'rgba(16,185,129,0.08)',
-                              border: '1px solid rgba(16,185,129,0.25)',
-                              color: '#10B981', cursor: uploadingBill ? 'not-allowed' : 'pointer',
+                              padding: '0 16px', height: 44, borderRadius: 10,
+                              background: selectedBillFile ? 'rgba(139,92,246,0.1)' : 'rgba(16,185,129,0.08)',
+                              border: selectedBillFile ? '1px solid rgba(139,92,246,0.3)' : '1px solid rgba(16,185,129,0.25)',
+                              color: selectedBillFile ? '#A78BFA' : '#10B981', cursor: claimLoading ? 'not-allowed' : 'pointer',
                               fontWeight: 600, fontSize: '0.875rem',
                               display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap'
                             }}
                           >
-                            {uploadingBill ? '⏳' : <Upload size={14} />} Upload Bill / Report
+                            <Upload size={14} /> {selectedBillFile ? (selectedBillFile.name.length > 20 ? selectedBillFile.name.slice(0, 20) + '...' : selectedBillFile.name) : 'Attach Bill / Report'}
                           </button>
+                          {selectedBillFile && (
+                            <button 
+                               onClick={() => { setSelectedBillFile(null); if (billFileRef.current) billFileRef.current.value = ''; }}
+                               style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '0.75rem', marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'center' }}
+                            >
+                               <Trash2 size={12}/> Remove attachment
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div>

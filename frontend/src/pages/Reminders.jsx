@@ -41,6 +41,15 @@ const MedicineSetupCard = ({ medicine, onConfirm, onSkip, index, total }) => {
   const [instructions, setInstructions] = useState(medicine.instructions || '')
   const [confirming, setConfirming] = useState(false)
 
+  // Medicine info state
+  const [medInfo, setMedInfo] = useState(null)
+  const [medInfoLoading, setMedInfoLoading] = useState(false)
+  const [showMedInfo, setShowMedInfo] = useState(false)
+
+  // Name correction state
+  const [nameCorrected, setNameCorrected] = useState(false)
+  const [correctedTo, setCorrectedTo] = useState('')
+
   const handleFreqChange = (f) => {
     setFreq(f)
     setTimes([...DEFAULT_TIMES[f]])
@@ -52,29 +61,302 @@ const MedicineSetupCard = ({ medicine, onConfirm, onSkip, index, total }) => {
     setConfirming(false)
   }
 
+  // Fetch medicine info when card mounts
+  useEffect(() => {
+    const fetchMedInfo = async () => {
+      setMedInfoLoading(true)
+      try {
+        const token = localStorage.getItem('access_token')
+        const res = await fetch(
+          'http://localhost:8000/api/medicines/medicine-info',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              medicine_name: medicine.name,
+              dosage: medicine.dosage || '',
+              language: 'english'
+            })
+          }
+        )
+        const data = await res.json()
+        if (data.success) {
+          setMedInfo(data.data)
+          // If name looks very different from what was scanned,
+          // show a soft warning
+          if (data.data.verified_name &&
+              data.data.verified_name.toLowerCase() !==
+              medicine.name.toLowerCase()) {
+            setNameCorrected(true)
+            setCorrectedTo(data.data.verified_name)
+          }
+        }
+      } catch {}
+      finally { setMedInfoLoading(false) }
+    }
+    fetchMedInfo()
+  }, [medicine.name])
+
   return (
     <div>
-      {/* Medicine info */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24,
-        padding: '14px 16px',
-        background: 'rgba(37,99,235,0.08)',
-        border: '1px solid rgba(37,99,235,0.2)', borderRadius: 12,
-      }}>
+      {/* Medicine info header + expandable panel */}
+      <div style={{ marginBottom: 20 }}>
+        {/* Medicine header */}
         <div style={{
-          width: 48, height: 48, background: 'rgba(37,99,235,0.15)',
-          borderRadius: 12, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0,
-        }}>💊</div>
-        <div>
-          <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '1rem' }}>
-            {medicine.name}
+          display: 'flex', alignItems: 'center', gap: 14,
+          padding: '14px 16px',
+          background: 'rgba(37,99,235,0.08)',
+          border: '1px solid rgba(37,99,235,0.2)',
+          borderRadius: showMedInfo ? '12px 12px 0 0' : 12,
+          cursor: 'pointer'
+        }} onClick={() => setShowMedInfo(v => !v)}>
+          <div style={{
+            width: 48, height: 48, background: 'rgba(37,99,235,0.15)',
+            borderRadius: 12, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
+          }}>💊</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '1rem' }}>
+              {medInfo?.verified_name || medicine.name}
+              {medInfo?.web_verified && (
+                <span style={{
+                  background: 'rgba(16,185,129,0.15)',
+                  color: '#10B981', fontSize: '0.62rem',
+                  padding: '1px 6px', borderRadius: 4,
+                  marginLeft: 6, fontWeight: 700
+                }}>✓ Verified</span>
+              )}
+            </div>
+            <div style={{ color: '#9CA3AF', fontSize: '0.8rem', marginTop: 2 }}>
+              {medInfo?.generic_name && (
+                <span style={{ color: '#60A5FA' }}>{medInfo.generic_name} · </span>
+              )}
+              {[medicine.dosage, medicine.duration].filter(Boolean).join(' • ') || ''}
+              {medInfo?.category && (
+                <span style={{ color: '#9CA3AF' }}> · {medInfo.category}</span>
+              )}
+            </div>
+            {medInfoLoading && (
+              <div style={{ color: '#6B7280', fontSize: '0.72rem', marginTop: 3 }}>
+                🔍 Looking up medicine info...
+              </div>
+            )}
+            {nameCorrected && correctedTo && (
+              <div style={{
+                marginTop: 6, padding: '5px 10px',
+                background: 'rgba(245,158,11,0.08)',
+                border: '1px solid rgba(245,158,11,0.2)',
+                borderRadius: 6, fontSize: '0.72rem',
+                color: '#F59E0B', display: 'flex',
+                alignItems: 'center', gap: 5
+              }}>
+                ✏️ Prescription read as{' '}
+                <strong>"{medicine.name}"</strong>
+                {' '}— showing info for{' '}
+                <strong>"{correctedTo}"</strong>
+              </div>
+            )}
           </div>
-          <div style={{ color: '#9CA3AF', fontSize: '0.8rem', marginTop: 2 }}>
-            {[medicine.dosage, medicine.duration].filter(Boolean).join(' • ') || t('dash_no_data')}
+          <div style={{ color: '#6B7280', fontSize: '0.75rem', flexShrink: 0 }}>
+            {showMedInfo ? '▲ Less' : '▼ About'}
           </div>
         </div>
+
+        {/* Medicine info expandable panel */}
+        {showMedInfo && medInfo && (
+          <div style={{
+            background: '#0F1117',
+            border: '1px solid rgba(37,99,235,0.2)',
+            borderTop: 'none',
+            borderRadius: '0 0 12px 12px',
+            padding: 16
+          }}>
+            {/* What it's for */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{
+                color: '#60A5FA', fontWeight: 700,
+                fontSize: '0.72rem', textTransform: 'uppercase',
+                letterSpacing: '0.06em', marginBottom: 6
+              }}>
+                🎯 What it's used for
+              </div>
+              <p style={{ color: '#D1D5DB', fontSize: '0.82rem',
+                lineHeight: 1.6, margin: 0 }}>
+                {medInfo.used_for}
+              </p>
+            </div>
+
+            {/* How it works */}
+            {medInfo.how_it_works && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{
+                  color: '#8B5CF6', fontWeight: 700,
+                  fontSize: '0.72rem', textTransform: 'uppercase',
+                  letterSpacing: '0.06em', marginBottom: 6
+                }}>
+                  ⚙️ How it works
+                </div>
+                <p style={{ color: '#D1D5DB', fontSize: '0.82rem',
+                  lineHeight: 1.6, margin: 0 }}>
+                  {medInfo.how_it_works}
+                </p>
+              </div>
+            )}
+
+            {/* How to take */}
+            {medInfo.how_to_take && (
+              <div style={{
+                background: 'rgba(16,185,129,0.06)',
+                border: '1px solid rgba(16,185,129,0.15)',
+                borderRadius: 8, padding: '10px 12px', marginBottom: 14
+              }}>
+                <div style={{
+                  color: '#10B981', fontWeight: 700,
+                  fontSize: '0.72rem', textTransform: 'uppercase',
+                  letterSpacing: '0.06em', marginBottom: 6
+                }}>
+                  💊 How to take
+                </div>
+                <p style={{ color: '#A7F3D0', fontSize: '0.82rem',
+                  lineHeight: 1.6, margin: 0 }}>
+                  {medInfo.how_to_take}
+                </p>
+              </div>
+            )}
+
+            {/* Side effects */}
+            {medInfo.common_side_effects?.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{
+                  color: '#F59E0B', fontWeight: 700,
+                  fontSize: '0.72rem', textTransform: 'uppercase',
+                  letterSpacing: '0.06em', marginBottom: 6
+                }}>
+                  ⚠️ Common side effects
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {medInfo.common_side_effects.map((se, i) => (
+                    <span key={i} style={{
+                      background: 'rgba(245,158,11,0.1)',
+                      border: '1px solid rgba(245,158,11,0.2)',
+                      borderRadius: 6, padding: '2px 8px',
+                      color: '#FDE68A', fontSize: '0.72rem'
+                    }}>
+                      {se}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Warnings */}
+            {medInfo.important_warnings?.length > 0 && (
+              <div style={{
+                background: 'rgba(239,68,68,0.06)',
+                border: '1px solid rgba(239,68,68,0.15)',
+                borderRadius: 8, padding: '10px 12px', marginBottom: 14
+              }}>
+                <div style={{
+                  color: '#EF4444', fontWeight: 700,
+                  fontSize: '0.72rem', textTransform: 'uppercase',
+                  letterSpacing: '0.06em', marginBottom: 6
+                }}>
+                  🚨 Important warnings
+                </div>
+                {medInfo.important_warnings.map((w, i) => (
+                  <div key={i} style={{
+                    color: '#FCA5A5', fontSize: '0.78rem',
+                    marginBottom: 3, display: 'flex', gap: 6
+                  }}>
+                    <span>•</span><span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Patient tip */}
+            {medInfo.patient_tip && (
+              <div style={{
+                display: 'flex', gap: 8,
+                background: 'rgba(37,99,235,0.06)',
+                border: '1px solid rgba(37,99,235,0.12)',
+                borderRadius: 8, padding: '8px 12px'
+              }}>
+                <span style={{ flexShrink: 0 }}>💡</span>
+                <p style={{ color: '#93C5FD', fontSize: '0.78rem',
+                  lineHeight: 1.5, margin: 0 }}>
+                  {medInfo.patient_tip}
+                </p>
+              </div>
+            )}
+
+            {/* Indian brands */}
+            {medInfo.indian_brands?.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{
+                  color: '#9CA3AF', fontSize: '0.68rem',
+                  marginBottom: 4
+                }}>
+                  Common Indian brands:
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {medInfo.indian_brands.map((b, i) => (
+                    <span key={i} style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid #2A2D3A',
+                      borderRadius: 4, padding: '1px 6px',
+                      color: '#9CA3AF', fontSize: '0.68rem'
+                    }}>
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{
+              marginTop: 10, fontSize: '0.65rem', color: '#6B7280',
+              display: 'flex', alignItems: 'center', gap: 4
+            }}>
+              {medInfo.fda_data_used
+                ? '✓ Data sourced from FDA drug database'
+                : '⚠️ Based on AI medical knowledge — verify with pharmacist'}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Fallback when medicine info unavailable */}
+      {!medInfoLoading && !medInfo && (
+        <div style={{
+          background: 'rgba(107,114,128,0.06)',
+          border: '1px solid rgba(107,114,128,0.15)',
+          borderRadius: 10, padding: '10px 14px',
+          marginBottom: 14,
+          display: 'flex', alignItems: 'center', gap: 8
+        }}>
+          <span style={{ fontSize: '1rem' }}>⚠️</span>
+          <div>
+            <div style={{
+              color: '#9CA3AF', fontSize: '0.78rem',
+              fontWeight: 600, marginBottom: 2
+            }}>
+              Medicine details unavailable
+            </div>
+            <div style={{
+              color: '#6B7280', fontSize: '0.72rem',
+              lineHeight: 1.4
+            }}>
+              Could not find "{medicine.name}" in our database.
+              Please verify the name with your pharmacist
+              before setting a reminder.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Conversation bubble */}
       <div style={{
@@ -228,6 +510,16 @@ const Reminders = () => {
   const [priceResult, setPriceResult] = useState(null)
   const [priceLang, setPriceLang] = useState('english')
 
+  const [interactionOpen, setInteractionOpen] = useState(false)
+  const [interactionInput, setInteractionInput] = useState('')
+  const [interactionLoading, setInteractionLoading] = useState(false)
+  const [interactionResult, setInteractionResult] = useState(null)
+
+  // Reminder medicine info state
+  const [reminderInfoMap, setReminderInfoMap] = useState({})
+  const [reminderInfoLoading, setReminderInfoLoading] = useState({})
+  const [expandedReminderInfo, setExpandedReminderInfo] = useState({})
+
   // Prescription scan state
   const [scanning, setScanning] = useState(false)
   const [scannedMedicines, setScannedMedicines] = useState([])
@@ -292,6 +584,39 @@ const Reminders = () => {
       toast.error('Connection error. Please try again.')
     } finally {
       setPriceLoading(false)
+    }
+  }
+
+  const handleInteractionCheck = async (medicines) => {
+    if (!medicines || medicines.length < 2) {
+      toast.error('Need at least 2 medicines to check interactions')
+      return
+    }
+    setInteractionLoading(true)
+    setInteractionResult(null)
+    try {
+      const token = localStorage.getItem('access_token')
+      const res = await fetch(
+        'http://localhost:8000/api/medicines/interactions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            medicines,
+            language: 'english'
+          })
+        }
+      )
+      const data = await res.json()
+      if (data.success) setInteractionResult(data.data)
+      else toast.error(data.error || 'Failed to check interactions')
+    } catch {
+      toast.error('Connection error. Please try again.')
+    } finally {
+      setInteractionLoading(false)
     }
   }
 
@@ -467,6 +792,53 @@ const Reminders = () => {
     }
   }
 
+  const fetchReminderInfo = async (reminderId, medicineName, dosage) => {
+    if (reminderInfoMap[reminderId]) {
+      // Toggle if already loaded
+      setExpandedReminderInfo(prev => ({
+        ...prev,
+        [reminderId]: !prev[reminderId]
+      }))
+      return
+    }
+    setReminderInfoLoading(prev => ({ ...prev, [reminderId]: true }))
+    try {
+      const token = localStorage.getItem('access_token')
+      const res = await fetch(
+        'http://localhost:8000/api/medicines/medicine-info',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            medicine_name: medicineName,
+            dosage: dosage || '',
+            language: 'english'
+          })
+        }
+      )
+      const data = await res.json()
+      if (data.success) {
+        setReminderInfoMap(prev => ({
+          ...prev,
+          [reminderId]: data.data
+        }))
+        setExpandedReminderInfo(prev => ({
+          ...prev,
+          [reminderId]: true
+        }))
+      } else {
+        toast.error('Could not load medicine info')
+      }
+    } catch {
+      toast.error('Failed to fetch medicine info')
+    } finally {
+      setReminderInfoLoading(prev => ({ ...prev, [reminderId]: false }))
+    }
+  }
+
   const currentMed = scannedMedicines[setupIndex]
 
   // ── Render ────────────────────────────────────────────
@@ -530,6 +902,29 @@ const Reminders = () => {
             }}
           >
             💰 Price Check
+          </button>
+          <button
+            onClick={() => {
+              setInteractionOpen(true)
+              setInteractionResult(null)
+              setInteractionInput(
+                reminders.filter(r => r.is_active)
+                  .map(r => r.medicine_name).join('\n')
+              )
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: 'clamp(8px, 2vw, 10px) clamp(12px, 3vw, 18px)',
+              borderRadius: 10,
+              border: '1.5px solid rgba(239,68,68,0.4)',
+              background: 'rgba(239,68,68,0.08)',
+              color: '#EF4444', cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 'clamp(0.75rem,2.5vw,0.85rem)',
+              transition: 'all 0.2s'
+            }}
+          >
+            ⚠️ Check Interactions
           </button>
           <button
             onClick={() => setShowForm(true)}
@@ -690,6 +1085,295 @@ const Reminders = () => {
           >
             📸 {t('rem_wizard_scan_another')}
           </button>
+        </div>
+      )}
+
+      {/* ── Interaction Modal ───────────────────── */}
+      {interactionOpen && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'center',
+          zIndex: 1000, padding: '20px', overflowY: 'auto'
+        }} onClick={() => !interactionLoading && setInteractionOpen(false)}>
+          <div style={{
+            background: '#1A1D27', border: '1px solid #2A2D3A',
+            borderRadius: 16, width: '100%', maxWidth: 640,
+            marginTop: 20, marginBottom: 20,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.6)'
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px', borderBottom: '1px solid #2A2D3A',
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', background: '#0F1117',
+              borderRadius: '16px 16px 0 0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.3rem' }}>⚠️</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '1rem' }}>
+                    Drug Interaction Checker
+                  </div>
+                  <div style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                    Powered by FDA drug interaction database
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setInteractionOpen(false)}
+                style={{ background: 'rgba(239,68,68,0.1)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: 8, color: '#EF4444',
+                  cursor: 'pointer', padding: '6px 12px',
+                  fontSize: '0.8rem', fontWeight: 600 }}>
+                ✕ Close
+              </button>
+            </div>
+
+            <div style={{ padding: 24 }}>
+              {!interactionResult && (
+                <>
+                  {/* Auto-filled from reminders */}
+                  {reminders.filter(r => r.is_active).length >= 2 && (
+                    <div style={{
+                      background: 'rgba(239,68,68,0.06)',
+                      border: '1px solid rgba(239,68,68,0.15)',
+                      borderRadius: 10, padding: '12px 16px',
+                      marginBottom: 16
+                    }}>
+                      <div style={{ color: '#EF4444', fontWeight: 600,
+                        fontSize: '0.82rem', marginBottom: 8 }}>
+                        ⚡ Check your active medicines:
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                        {reminders.filter(r => r.is_active).map((r, i) => (
+                          <span key={i} style={{
+                            background: 'rgba(239,68,68,0.1)',
+                            border: '1px solid rgba(239,68,68,0.2)',
+                            borderRadius: 6, padding: '2px 8px',
+                            color: '#FCA5A5', fontSize: '0.75rem'
+                          }}>💊 {r.medicine_name}</span>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => handleInteractionCheck(
+                          reminders.filter(r => r.is_active).map(r => r.medicine_name)
+                        )}
+                        disabled={interactionLoading}
+                        style={{
+                          padding: '8px 18px', borderRadius: 8,
+                          background: '#EF4444', border: 'none',
+                          color: '#fff', cursor: 'pointer',
+                          fontWeight: 600, fontSize: '0.82rem'
+                        }}>
+                        🔍 Check My Medicines
+                      </button>
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ color: '#9CA3AF', fontSize: '0.8rem',
+                      fontWeight: 600, display: 'block', marginBottom: 8 }}>
+                      Or enter medicines manually (one per line):
+                    </label>
+                    <textarea
+                      value={interactionInput}
+                      onChange={e => setInteractionInput(e.target.value)}
+                      placeholder={'Metformin 500mg\nAmlodipine 5mg\nAspirin 75mg'}
+                      rows={4}
+                      style={{ width: '100%', background: '#0F1117',
+                        border: '1px solid #2A2D3A', borderRadius: 8,
+                        padding: '10px 12px', color: '#F8F9FA',
+                        fontSize: '16px', resize: 'vertical',
+                        fontFamily: 'inherit', lineHeight: 1.6 }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => handleInteractionCheck(
+                      interactionInput.split('\n').map(m => m.trim()).filter(Boolean)
+                    )}
+                    disabled={interactionLoading || interactionInput.split('\n').filter(m => m.trim()).length < 2}
+                    style={{
+                      width: '100%', padding: '12px', borderRadius: 10,
+                      background: interactionLoading ? 'rgba(239,68,68,0.3)' : '#EF4444',
+                      border: 'none', color: '#fff',
+                      cursor: interactionLoading ? 'not-allowed' : 'pointer',
+                      fontWeight: 700, fontSize: '0.9rem',
+                      display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: 10
+                    }}>
+                    {interactionLoading ? (
+                      <>
+                        <div style={{ width: 16, height: 16,
+                          border: '2px solid rgba(255,255,255,0.3)',
+                          borderTop: '2px solid #fff', borderRadius: '50%',
+                          animation: 'spin 1s linear infinite' }} />
+                        Checking FDA database...
+                      </>
+                    ) : '⚠️ Check Drug Interactions'}
+                  </button>
+                </>
+              )}
+
+              {interactionLoading && (
+                <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>
+                  <div style={{ width: 44, height: 44, margin: '0 auto 16px',
+                    border: '3px solid #2A2D3A', borderTop: '3px solid #EF4444',
+                    borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  <p>Checking FDA drug interaction database...</p>
+                </div>
+              )}
+
+              {interactionResult && !interactionLoading && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <button onClick={() => { setInteractionResult(null); setInteractionInput('') }}
+                    style={{ alignSelf: 'flex-start', padding: '6px 14px',
+                      borderRadius: 8, background: 'rgba(107,114,128,0.1)',
+                      border: '1px solid #2A2D3A', color: '#9CA3AF',
+                      cursor: 'pointer', fontSize: '0.78rem' }}>
+                    ← Check Again
+                  </button>
+
+                  {/* Overall risk banner */}
+                  <div style={{
+                    background: interactionResult.overall_risk === 'high'
+                      ? 'rgba(239,68,68,0.1)'
+                      : interactionResult.overall_risk === 'medium'
+                        ? 'rgba(245,158,11,0.1)'
+                        : 'rgba(16,185,129,0.1)',
+                    border: `1px solid ${interactionResult.overall_risk === 'high'
+                      ? 'rgba(239,68,68,0.3)'
+                      : interactionResult.overall_risk === 'medium'
+                        ? 'rgba(245,158,11,0.3)'
+                        : 'rgba(16,185,129,0.3)'}`,
+                    borderRadius: 12, padding: '14px 18px',
+                    display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', flexWrap: 'wrap', gap: 8
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '1.3rem', marginBottom: 4 }}>
+                        {interactionResult.overall_risk === 'high' ? '🚨'
+                          : interactionResult.overall_risk === 'medium' ? '⚠️'
+                          : interactionResult.overall_risk === 'low' ? '🟡' : '✅'}
+                      </div>
+                      <div style={{
+                        color: interactionResult.overall_risk === 'high' ? '#EF4444'
+                          : interactionResult.overall_risk === 'medium' ? '#F59E0B'
+                          : '#10B981',
+                        fontWeight: 700, fontSize: '0.95rem'
+                      }}>
+                        {interactionResult.overall_risk === 'high' ? 'High Risk — Consult Doctor Immediately'
+                          : interactionResult.overall_risk === 'medium' ? 'Moderate Risk — Consult Doctor'
+                          : interactionResult.overall_risk === 'low' ? 'Low Risk — Monitor Yourself'
+                          : 'No Significant Interactions Found'}
+                      </div>
+                      <p style={{ color: '#D1D5DB', fontSize: '0.82rem',
+                        margin: '4px 0 0', lineHeight: 1.5 }}>
+                        {interactionResult.summary}
+                      </p>
+                    </div>
+                    {interactionResult.consult_doctor && (
+                      <span style={{ background: '#EF4444', color: '#fff',
+                        fontSize: '0.72rem', padding: '4px 10px',
+                        borderRadius: 6, fontWeight: 700 }}>
+                        See Doctor
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Individual interactions */}
+                  {interactionResult.interactions?.filter(i => i.severity !== 'none').length > 0 && (
+                    <div style={{ background: '#1A1D27',
+                      border: '1px solid #2A2D3A', borderRadius: 10,
+                      padding: '14px 16px' }}>
+                      <div style={{ color: '#EF4444', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 10,
+                        textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        🔴 Interactions Found
+                      </div>
+                      {interactionResult.interactions
+                        .filter(i => i.severity !== 'none')
+                        .map((interaction, i) => (
+                        <div key={i} style={{
+                          padding: '10px 12px', marginBottom: 8,
+                          background: interaction.severity === 'major'
+                            ? 'rgba(239,68,68,0.08)'
+                            : interaction.severity === 'moderate'
+                              ? 'rgba(245,158,11,0.08)'
+                              : 'rgba(107,114,128,0.08)',
+                          borderRadius: 8,
+                          borderLeft: `3px solid ${interaction.severity === 'major'
+                            ? '#EF4444'
+                            : interaction.severity === 'moderate'
+                              ? '#F59E0B' : '#6B7280'}`
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ color: '#F8F9FA', fontWeight: 600,
+                              fontSize: '0.82rem' }}>
+                              {interaction.medicine_1} + {interaction.medicine_2}
+                            </span>
+                            <span style={{
+                              background: interaction.severity === 'major'
+                                ? '#EF4444'
+                                : interaction.severity === 'moderate'
+                                  ? '#F59E0B' : '#6B7280',
+                              color: '#fff', fontSize: '0.65rem',
+                              padding: '2px 8px', borderRadius: 4,
+                              fontWeight: 700, textTransform: 'uppercase'
+                            }}>
+                              {interaction.severity}
+                            </span>
+                          </div>
+                          <p style={{ color: '#9CA3AF', fontSize: '0.78rem',
+                            margin: '0 0 4px', lineHeight: 1.5 }}>
+                            {interaction.description}
+                          </p>
+                          <p style={{ color: '#60A5FA', fontSize: '0.75rem',
+                            margin: 0, fontStyle: 'italic' }}>
+                            💡 {interaction.recommendation}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Safe combinations */}
+                  {interactionResult.safe_combinations?.length > 0 && (
+                    <div style={{ background: 'rgba(16,185,129,0.06)',
+                      border: '1px solid rgba(16,185,129,0.15)',
+                      borderRadius: 10, padding: '12px 16px' }}>
+                      <div style={{ color: '#10B981', fontWeight: 700,
+                        fontSize: '0.75rem', marginBottom: 8,
+                        textTransform: 'uppercase' }}>
+                        ✅ Safe Combinations
+                      </div>
+                      {interactionResult.safe_combinations.map((combo, i) => (
+                        <div key={i} style={{ color: '#A7F3D0',
+                          fontSize: '0.8rem', marginBottom: 4,
+                          display: 'flex', gap: 6 }}>
+                          <span>✓</span><span>{combo}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '0.7rem', color: '#6B7280',
+                    padding: '8px 12px',
+                    background: 'rgba(107,114,128,0.05)',
+                    borderRadius: 8, lineHeight: 1.5 }}>
+                    ⚕️ Based on FDA drug interaction database.
+                    Always consult your doctor before changing medicines.
+                    Call 108 for emergencies.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1039,32 +1723,56 @@ const Reminders = () => {
                     <div key={idx} style={{
                       background: '#0F1117',
                       border: '1px solid #2A2D3A',
-                      borderRadius: 12, overflow: 'hidden'
+                      borderRadius: 12, overflow: 'hidden',
+                      marginBottom: 12
                     }}>
                       {/* Medicine header */}
                       <div style={{
-                        padding: '14px 18px',
+                        padding: '16px 20px',
                         borderBottom: '1px solid #2A2D3A',
                         display: 'flex', justifyContent: 'space-between',
-                        alignItems: 'center', flexWrap: 'wrap', gap: 8,
+                        alignItems: 'flex-start', flexWrap: 'wrap', gap: 12,
                         background: '#1A1D27'
                       }}>
                         <div>
                           <div style={{
                             color: '#F8F9FA', fontWeight: 700,
-                            fontSize: '0.95rem'
+                            fontSize: '0.95rem', marginBottom: 4
                           }}>
                             💊 {med.name}
                           </div>
                           <div style={{
-                            color: '#9CA3AF', fontSize: '0.75rem',
-                            marginTop: 2
+                            color: '#9CA3AF', fontSize: '0.75rem'
                           }}>
                             {med.generic_name && `Generic: ${med.generic_name}`}
                             {med.category && ` · ${med.category}`}
                           </div>
+                          <div style={{
+                            marginTop: 8, display: 'flex', gap: 6, alignItems: 'center'
+                          }}>
+                            {med.price_source === 'scraped' ? (
+                              <span style={{
+                                background: 'rgba(16,185,129,0.1)',
+                                color: '#10B981', fontSize: '0.65rem',
+                                padding: '2px 6px', borderRadius: 4,
+                                fontWeight: 700, border: '1px solid rgba(16,185,129,0.2)'
+                              }}>
+                                📡 Live from 1mg/PharmEasy
+                              </span>
+                            ) : (
+                              <span style={{
+                                background: 'rgba(107,114,128,0.1)',
+                                color: '#9CA3AF', fontSize: '0.65rem',
+                                padding: '2px 6px', borderRadius: 4,
+                                fontWeight: 600, border: '1px solid rgba(107,114,128,0.2)'
+                              }}>
+                                ✨ AI Estimate (Scraping failed)
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
+
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {med.jan_aushadhi_available && (
                             <span style={{
                               background: 'rgba(16,185,129,0.15)',
@@ -1568,88 +2276,238 @@ const Reminders = () => {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {reminders.map(reminder => (
-              <div key={reminder.id} className="stagger-item card-hover" style={{
-                background: '#1A1D27',
-                border: `1px solid ${reminder.is_active ? '#2A2D3A' : 'rgba(107,114,128,0.2)'}`,
-                borderRadius: 12, padding: 'clamp(12px, 3vw, 16px) clamp(14px, 4vw, 20px)',
-                display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                opacity: reminder.is_active ? 1 : 0.55, transition: 'all 0.2s',
-              }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                  background: reminder.is_active
-                    ? 'rgba(37,99,235,0.12)' : 'rgba(107,114,128,0.1)',
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: '1.2rem',
-                }}>💊</div>
+              <div key={reminder.id} className="stagger-item">
+                <div className="card-hover" style={{
+                  background: '#1A1D27',
+                  border: `1px solid ${reminder.is_active ? '#2A2D3A' : 'rgba(107,114,128,0.2)'}`,
+                  borderRadius: expandedReminderInfo[reminder.id] ? '12px 12px 0 0' : 12,
+                  padding: 'clamp(12px, 3vw, 16px) clamp(14px, 4vw, 20px)',
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                  opacity: reminder.is_active ? 1 : 0.55, transition: 'all 0.2s',
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                    background: reminder.is_active
+                      ? 'rgba(37,99,235,0.12)' : 'rgba(107,114,128,0.1)',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: '1.2rem',
+                  }}>💊</div>
 
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '0.95rem' }}>
-                      {reminder.medicine_name}
-                    </span>
-                    {reminder.dosage && (
-                      <span style={{
-                        background: 'rgba(37,99,235,0.1)', color: '#60A5FA',
-                        fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6, fontWeight: 500,
-                      }}>
-                        {reminder.dosage}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '0.95rem' }}>
+                        {reminder.medicine_name}
                       </span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {reminder.reminder_times.map((time, i) => {
-                      const tod = getTimeOfDay(time)
-                      return (
-                        <span key={i} style={{
-                          background: `${tod.color}18`,
-                          border: `1px solid ${tod.color}35`,
-                          color: tod.color, fontSize: '0.72rem',
-                          padding: '3px 8px', borderRadius: 6,
-                          display: 'flex', alignItems: 'center',
-                          gap: 4, fontWeight: 500,
+                      {reminder.dosage && (
+                        <span style={{
+                          background: 'rgba(37,99,235,0.1)', color: '#60A5FA',
+                          fontSize: '0.72rem', padding: '2px 8px', borderRadius: 6, fontWeight: 500,
                         }}>
-                          <Clock size={10} />
-                          {time} · {tod.label}
+                          {reminder.dosage}
                         </span>
-                      )
-                    })}
-                    {reminder.instructions && (
-                      <span style={{ color: '#6B7280', fontSize: '0.72rem' }}>
-                        · {reminder.instructions}
-                      </span>
-                    )}
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {reminder.reminder_times.map((time, i) => {
+                        const tod = getTimeOfDay(time)
+                        return (
+                          <span key={i} style={{
+                            background: `${tod.color}18`,
+                            border: `1px solid ${tod.color}35`,
+                            color: tod.color, fontSize: '0.72rem',
+                            padding: '3px 8px', borderRadius: 6,
+                            display: 'flex', alignItems: 'center',
+                            gap: 4, fontWeight: 500,
+                          }}>
+                            <Clock size={10} />
+                            {time} · {tod.label}
+                          </span>
+                        )
+                      })}
+                      {reminder.instructions && (
+                        <span style={{ color: '#6B7280', fontSize: '0.72rem' }}>
+                          · {reminder.instructions}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => fetchReminderInfo(
+                        reminder.id,
+                        reminder.medicine_name,
+                        reminder.dosage
+                      )}
+                      title="About this medicine"
+                      style={{
+                        width: 34, height: 34, borderRadius: 8,
+                        border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center',
+                        justifyContent: 'center',
+                        background: expandedReminderInfo[reminder.id]
+                          ? 'rgba(139,92,246,0.2)'
+                          : 'rgba(139,92,246,0.08)',
+                        color: '#A78BFA',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {reminderInfoLoading[reminder.id]
+                        ? <div style={{
+                            width: 12, height: 12,
+                            border: '2px solid rgba(167,139,250,0.3)',
+                            borderTop: '2px solid #A78BFA',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                          }} />
+                        : <span style={{ fontSize: '0.75rem' }}>ℹ️</span>
+                      }
+                    </button>
+                    <button
+                      onClick={() => handleToggle(reminder)}
+                      title={reminder.is_active ? 'Pause' : 'Resume'}
+                      style={{
+                        width: 34, height: 34, borderRadius: 8,
+                        border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center',
+                        justifyContent: 'center',
+                        background: reminder.is_active
+                          ? 'rgba(16,185,129,0.12)'
+                          : 'rgba(107,114,128,0.1)',
+                        color: reminder.is_active ? '#10B981' : '#6B7280',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(
+                        reminder.id, reminder.medicine_name
+                      )}
+                      title="Delete"
+                      style={{
+                        width: 34, height: 34, borderRadius: 8,
+                        border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'rgba(239,68,68,0.08)',
+                        color: '#EF4444',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button
-                    onClick={() => handleToggle(reminder)}
-                    title={reminder.is_active ? 'Pause' : 'Resume'}
-                    style={{
-                      width: 34, height: 34, borderRadius: 8, border: 'none',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: reminder.is_active
-                        ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.1)',
-                      color: reminder.is_active ? '#10B981' : '#6B7280',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <Check size={14} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(reminder.id, reminder.medicine_name)}
-                    title="Delete"
-                    style={{
-                      width: 34, height: 34, borderRadius: 8, border: 'none',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: 'rgba(239,68,68,0.08)', color: '#EF4444',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {/* Medicine info panel */}
+                {expandedReminderInfo[reminder.id] &&
+                  reminderInfoMap[reminder.id] && (
+                  <div style={{
+                    background: '#0F1117',
+                    border: '1px solid rgba(139,92,246,0.2)',
+                    borderTop: 'none',
+                    borderRadius: '0 0 12px 12px',
+                    padding: '14px 16px',
+                    marginTop: -2
+                  }}>
+                    {/* Used for */}
+                    {reminderInfoMap[reminder.id].used_for && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{
+                          color: '#60A5FA', fontWeight: 700,
+                          fontSize: '0.7rem', textTransform: 'uppercase',
+                          letterSpacing: '0.06em', marginBottom: 4
+                        }}>
+                          🎯 What it's for
+                        </div>
+                        <p style={{
+                          color: '#D1D5DB', fontSize: '0.8rem',
+                          lineHeight: 1.6, margin: 0
+                        }}>
+                          {reminderInfoMap[reminder.id].used_for}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* How to take */}
+                    {reminderInfoMap[reminder.id].how_to_take && (
+                      <div style={{
+                        background: 'rgba(16,185,129,0.06)',
+                        border: '1px solid rgba(16,185,129,0.15)',
+                        borderRadius: 8, padding: '8px 12px',
+                        marginBottom: 10
+                      }}>
+                        <div style={{
+                          color: '#10B981', fontWeight: 700,
+                          fontSize: '0.7rem', textTransform: 'uppercase',
+                          letterSpacing: '0.06em', marginBottom: 4
+                        }}>
+                          💊 How to take
+                        </div>
+                        <p style={{
+                          color: '#A7F3D0', fontSize: '0.8rem',
+                          lineHeight: 1.5, margin: 0
+                        }}>
+                          {reminderInfoMap[reminder.id].how_to_take}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Side effects */}
+                    {reminderInfoMap[reminder.id].common_side_effects?.length > 0 && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{
+                          color: '#F59E0B', fontWeight: 700,
+                          fontSize: '0.7rem', textTransform: 'uppercase',
+                          letterSpacing: '0.06em', marginBottom: 6
+                        }}>
+                          ⚠️ Side effects
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                          {reminderInfoMap[reminder.id].common_side_effects
+                            .slice(0, 4).map((se, i) => (
+                            <span key={i} style={{
+                              background: 'rgba(245,158,11,0.1)',
+                              border: '1px solid rgba(245,158,11,0.15)',
+                              borderRadius: 6, padding: '2px 8px',
+                              color: '#FDE68A', fontSize: '0.7rem'
+                            }}>
+                              {se}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Patient tip */}
+                    {reminderInfoMap[reminder.id].patient_tip && (
+                      <div style={{
+                        display: 'flex', gap: 6,
+                        background: 'rgba(37,99,235,0.05)',
+                        border: '1px solid rgba(37,99,235,0.1)',
+                        borderRadius: 8, padding: '8px 10px'
+                      }}>
+                        <span style={{ flexShrink: 0 }}>💡</span>
+                        <p style={{
+                          color: '#93C5FD', fontSize: '0.75rem',
+                          lineHeight: 1.5, margin: 0
+                        }}>
+                          {reminderInfoMap[reminder.id].patient_tip}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Source badge */}
+                    <div style={{
+                      marginTop: 8, fontSize: '0.65rem', color: '#6B7280'
+                    }}>
+                      {reminderInfoMap[reminder.id].fda_data_used
+                        ? '✓ Data from FDA drug database'
+                        : '⚠️ AI medical knowledge — verify with pharmacist'}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1677,6 +2535,10 @@ const Reminders = () => {
           .form-input {
             font-size: 16px !important;
           }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

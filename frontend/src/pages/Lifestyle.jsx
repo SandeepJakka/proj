@@ -295,26 +295,55 @@ const Lifestyle = () => {
               </div>
             ) : (
               <div className="plan-info animate-in">
-                <MessageCircle size={48} color="#2563EB" />
-                <h3>{t('life_nutrition_heading')}</h3>
-                <p>
-                  {t('life_nutrition_desc')}
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.8rem', margin: '0 auto 16px'
+                }}>
+                  👩‍⚕️
+                </div>
+                <h3 style={{ color: '#F8F9FA', marginBottom: 8 }}>
+                  Chat with Priya
+                </h3>
+                <p style={{ color: '#9CA3AF', fontSize: '0.85rem',
+                  lineHeight: 1.6, marginBottom: 16 }}>
+                  Your personal nutrition consultant. Priya will ask you
+                  a few friendly questions and create a personalized
+                  7-day Indian meal plan just for you.
                 </p>
-                <ul>
-                  <li>✓ Reviews your health profile and lab results</li>
-                  <li>✓ Asks about your food preferences and restrictions</li>
-                  <li>✓ Creates a customized 7-day meal plan</li>
-                  <li>✓ Saves your plan for future reference</li>
-                </ul>
+                <div style={{ display: 'flex', flexDirection: 'column',
+                  gap: 6, marginBottom: 20, textAlign: 'left' }}>
+                  {[
+                    '🥗 Personalized Indian meal plan',
+                    '📊 Your daily nutrition targets',
+                    '🛒 Weekly shopping list',
+                    '💡 Tips for your specific challenges'
+                  ].map((item, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      color: '#D1D5DB', fontSize: '0.82rem'
+                    }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
                 <button
                   className="btn btn-primary"
-                  style={{ width: '100%', justifyContent: 'center' }}
                   onClick={() => openConsultation('diet')}
                   disabled={loadingType === 'diet'}
+                  style={{
+                    background: 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
+                    border: 'none', padding: '12px 24px',
+                    borderRadius: 12, cursor: 'pointer',
+                    fontWeight: 700, color: '#fff', fontSize: '0.9rem',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    margin: '0 auto', boxShadow: '0 4px 15px rgba(255,107,107,0.3)'
+                  }}
                 >
                   {loadingType === 'diet'
-                    ? <Loader className="spin" size={18} />
-                    : <><MessageCircle size={18} /> {t('life_start_consult')}</>}
+                    ? <><Loader className="spin" size={18} /> Starting...</>
+                    : <>💬 Start Consultation with Priya</>}
                 </button>
               </div>
             )}
@@ -383,26 +412,55 @@ const Lifestyle = () => {
               </div>
             ) : (
               <div className="plan-info animate-in">
-                <MessageCircle size={48} color="#2563EB" />
-                <h3>{t('life_fitness_heading')}</h3>
-                <p>
-                  {t('life_fitness_desc')}
+                <div style={{
+                  width: 64, height: 64, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #4D96FF, #6BCB77)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.8rem', margin: '0 auto 16px'
+                }}>
+                  👨‍⚕️
+                </div>
+                <h3 style={{ color: '#F8F9FA', marginBottom: 8 }}>
+                  Train with Arjun
+                </h3>
+                <p style={{ color: '#9CA3AF', fontSize: '0.85rem',
+                  lineHeight: 1.6, marginBottom: 16 }}>
+                  Your personal fitness coach. Arjun will understand
+                  your fitness level, limitations, and schedule to
+                  build a plan that actually works for you.
                 </p>
-                <ul>
-                  <li>✓ Assesses your current fitness level</li>
-                  <li>✓ Identifies physical limitations or injuries</li>
-                  <li>✓ Creates a personalized weekly workout routine</li>
-                  <li>✓ Saves your plan for future reference</li>
-                </ul>
+                <div style={{ display: 'flex', flexDirection: 'column',
+                  gap: 6, marginBottom: 20, textAlign: 'left' }}>
+                  {[
+                    '💪 Custom workout schedule',
+                    '🏋️ Exercise details with form tips',
+                    '📈 6-week progression plan',
+                    '✅ Tips for staying consistent'
+                  ].map((item, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      color: '#D1D5DB', fontSize: '0.82rem'
+                    }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
                 <button
                   className="btn btn-primary"
-                  style={{ width: '100%', justifyContent: 'center' }}
                   onClick={() => openConsultation('workout')}
                   disabled={loadingType === 'workout'}
+                  style={{
+                    background: 'linear-gradient(135deg, #4D96FF, #6BCB77)',
+                    border: 'none', padding: '12px 24px',
+                    borderRadius: 12, cursor: 'pointer',
+                    fontWeight: 700, color: '#fff', fontSize: '0.9rem',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    margin: '0 auto', boxShadow: '0 4px 15px rgba(77,150,255,0.3)'
+                  }}
                 >
                   {loadingType === 'workout'
-                    ? <Loader className="spin" size={18} />
-                    : <><MessageCircle size={18} /> {t('life_start_consult')}</>}
+                    ? <><Loader className="spin" size={18} /> Starting...</>
+                    : <>💬 Start Training with Arjun</>}
                 </button>
               </div>
             )}
@@ -628,31 +686,60 @@ const Lifestyle = () => {
               padding: 'clamp(10px, 3vw, 14px) clamp(12px, 4vw, 20px)', borderBottom: '1px solid #2A2D3A',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 32, height: 32, background: 'rgba(37,99,235,.15)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
-                  <Bot size={16} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                    {modalType === 'diet' ? t('life_nutrition_title') : t('life_fitness_title')}
+              {modalType === 'diet' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #FF6B6B, #FF8E53)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1rem', flexShrink: 0
+                  }}>👩‍⚕️</div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '0.9rem' }}>
+                      Priya — Nutrition Consultant
+                    </div>
+                    <div style={{ color: '#10B981', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="status-dot" /> {chatLoading ? 'Thinking…' : 'Online'}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#10B981' }}>
-                    {chatLoading ? 'Thinking…' : 'Online'}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #4D96FF, #6BCB77)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1rem', flexShrink: 0
+                  }}>👨‍⚕️</div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '0.9rem' }}>
+                      Arjun — Fitness Coach
+                    </div>
+                    <div style={{ color: '#10B981', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="status-dot" /> {chatLoading ? 'Thinking…' : 'Online'}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 {planGenerated && (
                   <button
-                    className="btn btn-primary btn-sm"
                     onClick={savePlan}
                     disabled={savingPlan}
                     style={{
-                      background: '#10B981', border: 'none',
-                      display: 'flex', alignItems: 'center', gap: 6
+                      background: savingPlan
+                        ? 'rgba(16,185,129,0.3)'
+                        : 'linear-gradient(135deg, #10B981, #059669)',
+                      border: 'none', borderRadius: 10,
+                      color: '#fff', padding: '8px 16px',
+                      cursor: savingPlan ? 'not-allowed' : 'pointer',
+                      fontWeight: 700, fontSize: '0.82rem',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      boxShadow: savingPlan ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
+                      animation: !savingPlan ? 'pulse 2s infinite' : 'none'
                     }}
                   >
-                    {savingPlan ? '...' : t('life_save_plan')}
+                    {savingPlan ? '⏳ Saving...' : '💾 Save My Plan'}
                   </button>
                 )}
                 {!planGenerated && chatMessages.length > 1 && (
@@ -692,10 +779,18 @@ const Lifestyle = () => {
                     {msg.role === 'user' ? <User size={12} /> : <Bot size={12} />}
                   </div>
                   <div style={{
-                    padding: '10px 14px',
-                    borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                    background: msg.role === 'user' ? '#2563EB' : '#0F1117',
-                    borderLeft: msg.role === 'assistant' ? '3px solid #2563EB' : 'none',
+                    padding: '12px 16px',
+                    borderRadius: msg.role === 'user' ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+                    background: msg.role === 'user'
+                      ? '#2563EB'
+                      : modalType === 'diet'
+                        ? 'linear-gradient(135deg, rgba(255,107,107,0.08), rgba(255,142,83,0.08))'
+                        : 'linear-gradient(135deg, rgba(77,150,255,0.08), rgba(107,203,119,0.08))',
+                    border: msg.role === 'assistant'
+                      ? modalType === 'diet'
+                        ? '1px solid rgba(255,107,107,0.2)'
+                        : '1px solid rgba(77,150,255,0.2)'
+                      : 'none',
                     color: msg.role === 'user' ? '#fff' : '#F8F9FA',
                     fontSize: '0.84rem', lineHeight: 1.6,
                   }}>
@@ -708,26 +803,47 @@ const Lifestyle = () => {
                 </div>
               ))}
               {userMessageCount >= 4 && !planGenerated && !chatLoading && (
-                <div style={{ alignSelf: 'flex-end', marginTop: 4 }}>
-                  <button
-                    onClick={() => {
-                      setChatInput('Generate my plan');
-                      setTimeout(() => {
-                        document.querySelector('.lifestyle-chat-input')?.focus();
-                      }, 100);
-                    }}
-                    style={{
-                      background: 'linear-gradient(135deg, #10B981, #059669)',
-                      border: 'none', borderRadius: 20,
-                      padding: 'clamp(7px, 2vw, 8px) clamp(12px, 3vw, 18px)', color: '#fff',
-                      cursor: 'pointer', fontSize: 'clamp(0.72rem, 2.5vw, 0.8rem)',
-                      fontWeight: 600, display: 'flex',
-                      alignItems: 'center', gap: 6,
-                      boxShadow: '0 4px 12px rgba(16,185,129,0.3)'
-                    }}
-                  >
-                    ✨ Generate my plan
-                  </button>
+                <div style={{
+                  alignSelf: 'flex-start', marginTop: 4,
+                  display: 'flex', flexDirection: 'column', gap: 8
+                }}>
+                  <div style={{ color: '#6B7280', fontSize: '0.72rem' }}>
+                    Quick replies:
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {[
+                      { label: '✨ Generate my plan!', value: 'Generate my plan' },
+                      { label: '❓ One more question', value: 'I have one more thing to add' },
+                      { label: '🔄 Start over', value: 'Let me start over with different goals' },
+                    ].map(chip => (
+                      <button
+                        key={chip.value}
+                        onClick={() => {
+                          setChatInput(chip.value)
+                          setTimeout(() => {
+                            document.querySelector('.lifestyle-chat-input')?.focus()
+                          }, 50)
+                        }}
+                        style={{
+                          padding: '7px 14px', borderRadius: 20,
+                          border: chip.label.includes('Generate')
+                            ? '1.5px solid rgba(16,185,129,0.4)'
+                            : '1px solid #2A2D3A',
+                          background: chip.label.includes('Generate')
+                            ? 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.1))'
+                            : 'rgba(255,255,255,0.03)',
+                          color: chip.label.includes('Generate') ? '#10B981' : '#9CA3AF',
+                          cursor: 'pointer', fontSize: '0.78rem',
+                          fontWeight: chip.label.includes('Generate') ? 700 : 400,
+                          transition: 'all 0.15s',
+                          boxShadow: chip.label.includes('Generate')
+                            ? '0 2px 8px rgba(16,185,129,0.2)' : 'none'
+                        }}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {chatLoading && (
@@ -778,6 +894,19 @@ const Lifestyle = () => {
         .plan-info li { padding: 8px 0; font-size: 15px; }
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse {
+          0%, 100% { box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+          50% { box-shadow: 0 4px 20px rgba(16,185,129,0.6); }
+        }
+        .status-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #10B981; display: inline-block;
+          animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
         @media (max-width: 768px) { .plans-grid { grid-template-columns: 1fr; } }
         .plan-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.82rem; border-radius: 10px; overflow: hidden; border: 1px solid #2A2D3A; }
         .plan-content table th { background: #2563EB; color: #fff; padding: 10px 14px; text-align: left; font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }

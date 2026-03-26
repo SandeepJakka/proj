@@ -34,6 +34,11 @@ const Dashboard = () => {
   const memberReportRef = React.useRef(null);
   const [viewingReport, setViewingReport] = useState(null); // { report, member }
 
+  // News state
+  const [healthNews, setHealthNews] = useState([])
+  const [newsLoading, setNewsLoading] = useState(false)
+  const [newsOpen, setNewsOpen] = useState(false)
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -61,6 +66,12 @@ const Dashboard = () => {
     };
     load();
   }, []);
+
+  useEffect(() => {
+    if (newsOpen && healthNews.length === 0) {
+      fetchHealthNews()
+    }
+  }, [newsOpen])
 
   const displayName = user?.full_name
     ? user.full_name.split(' ')[0]
@@ -184,6 +195,19 @@ const Dashboard = () => {
       setFamilyMembers(Array.isArray(data) ? data : []);
     } catch {}
   };
+
+  const fetchHealthNews = async () => {
+    setNewsLoading(true)
+    try {
+      const res = await fetch('http://localhost:8000/api/news/health-news')
+      const data = await res.json()
+      setHealthNews(data.news || [])
+    } catch {
+      setHealthNews([])
+    } finally {
+      setNewsLoading(false)
+    }
+  }
 
   const handleSaveMember = async () => {
     if (!memberForm.name.trim() || !memberForm.relation.trim()) {
@@ -386,12 +410,138 @@ const Dashboard = () => {
       <Toaster position="top-right" toastOptions={{ className: 'toast-dark' }} />
 
       {/* Welcome */}
-      <div className="page-header" style={{ marginBottom: 0 }}>
-        <h1 style={{ fontSize: 'clamp(1.2rem, 4vw, 2rem)' }}>
-          {t('dash_greeting')}, {displayName} 👋
-        </h1>
-        <p>{t('dash_subtitle')}</p>
+      <div className="page-header" style={{ marginBottom: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ fontSize: 'clamp(1.2rem, 4vw, 2rem)' }}>
+            {t('dash_greeting')}, {displayName} 👋
+          </h1>
+          <p>{t('dash_subtitle')}</p>
+        </div>
+        <button
+          onClick={() => setNewsOpen(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '9px 16px', borderRadius: 10,
+            background: 'rgba(16,185,129,0.08)',
+            border: '1px solid rgba(16,185,129,0.2)',
+            color: '#10B981', cursor: 'pointer',
+            fontWeight: 600, fontSize: '0.82rem',
+            transition: 'all 0.2s'
+          }}
+        >
+          📰 {newsOpen ? 'Hide News' : 'Health News'}
+        </button>
       </div>
+
+      {newsOpen && (
+        <div style={{
+          background: '#1A1D27',
+          border: '1px solid #2A2D3A',
+          borderRadius: 14, overflow: 'hidden'
+        }}>
+          <div style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid #2A2D3A',
+            display: 'flex', justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '1.1rem' }}>📰</span>
+              <div>
+                <div style={{ fontWeight: 700, color: '#F8F9FA',
+                  fontSize: '0.9rem' }}>
+                  Latest Health News
+                </div>
+                <div style={{ color: '#9CA3AF', fontSize: '0.72rem' }}>
+                  Real-time from NDTV, TOI, WHO, The Hindu
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={fetchHealthNews}
+              disabled={newsLoading}
+              style={{ background: 'none', border: 'none',
+                color: '#9CA3AF', cursor: 'pointer',
+                fontSize: '0.78rem', display: 'flex',
+                alignItems: 'center', gap: 4 }}
+            >
+              {newsLoading ? '⏳' : '🔄'} Refresh
+            </button>
+          </div>
+
+          {newsLoading ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF' }}>
+              <div style={{ width: 32, height: 32, margin: '0 auto 12px',
+                border: '2px solid #2A2D3A',
+                borderTop: '2px solid #10B981',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite' }} />
+              Loading latest health news...
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: 0
+            }}>
+              {healthNews.slice(0, 6).map((item, i) => (
+                <div key={i} style={{
+                  padding: '14px 18px',
+                  borderBottom: i < 5 ? '1px solid #2A2D3A' : 'none',
+                  borderRight: i % 2 === 0 ? '1px solid #2A2D3A' : 'none',
+                  transition: 'background 0.15s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{
+                    display: 'flex', gap: 8,
+                    alignItems: 'flex-start', marginBottom: 6
+                  }}>
+                    <span style={{
+                      background: 'rgba(16,185,129,0.1)',
+                      color: '#10B981', fontSize: '0.62rem',
+                      padding: '2px 6px', borderRadius: 4,
+                      fontWeight: 600, flexShrink: 0,
+                      marginTop: 2
+                    }}>
+                      {item.source?.split(' ')[0]}
+                    </span>
+                    {item.link ? (
+                      <a href={item.link} target="_blank" rel="noopener noreferrer"
+                        style={{ color: '#F8F9FA', fontWeight: 600,
+                          fontSize: '0.82rem', lineHeight: 1.4,
+                          textDecoration: 'none',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}>
+                        {item.title}
+                      </a>
+                    ) : (
+                      <span style={{ color: '#F8F9FA', fontWeight: 600,
+                        fontSize: '0.82rem', lineHeight: 1.4 }}>
+                        {item.title}
+                      </span>
+                    )}
+                  </div>
+                  {item.description && (
+                    <p style={{ color: '#9CA3AF', fontSize: '0.75rem',
+                      lineHeight: 1.5, margin: 0,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden' }}>
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="stats-grid" style={{ gap: 10 }}>
