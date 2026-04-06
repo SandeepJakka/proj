@@ -365,7 +365,7 @@ const Insurance = () => {
                 color: '#9CA3AF', fontSize: '0.875rem',
                 marginBottom: 20, maxWidth: 360, margin: '0 auto 20px'
               }}>
-                Upload your health insurance policy PDF and Healthora will read every page — then check
+                Upload your health insurance policy PDF and Vaidya Assist will read every page — then check
                 claim eligibility and ask any question about your coverage.
               </p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 20 }}>
@@ -601,39 +601,29 @@ const Insurance = () => {
                         </div>
                       </div>
 
-                      {/* Cashless / Reimbursement guidance */}
-                      {claimResult.claim_type && (
-                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                          {(claimResult.claim_type === 'cashless' || claimResult.claim_type === 'both') && (
-                            <div style={{
-                              background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)',
-                              borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 160
+                      {/* ── Policy Sections Coverage ───────────────── */}
+                      {claimResult.policy_sections?.length > 0 && (
+                        <div style={{ background: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: 10, padding: '14px 16px' }}>
+                          <div style={{ color: '#60A5FA', fontWeight: 700, fontSize: '0.75rem', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            📑 Policy Sections — Coverage Details
+                          </div>
+                          {claimResult.policy_sections.map((sec, i) => (
+                            <div key={i} style={{
+                              borderLeft: '3px solid rgba(37,99,235,0.4)',
+                              paddingLeft: 12, marginBottom: 12
                             }}>
-                              <div style={{ color: '#60A5FA', fontWeight: 700, fontSize: '0.75rem', marginBottom: 4 }}>
-                                💳 CASHLESS
+                              <div style={{ color: '#93C5FD', fontWeight: 600, fontSize: '0.8rem', marginBottom: 3 }}>
+                                {sec.section}
                               </div>
-                              <p style={{ color: '#D1D5DB', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
-                                {claimResult.cashless_guidance || 'Use at network hospitals'}
-                              </p>
-                            </div>
-                          )}
-                          {(claimResult.claim_type === 'reimbursement' || claimResult.claim_type === 'both') && (
-                            <div style={{
-                              background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)',
-                              borderRadius: 10, padding: '10px 14px', flex: 1, minWidth: 160
-                            }}>
-                              <div style={{ color: '#A78BFA', fontWeight: 700, fontSize: '0.75rem', marginBottom: 4 }}>
-                                🔄 REIMBURSEMENT
+                              <div style={{ color: '#D1D5DB', fontSize: '0.78rem', lineHeight: 1.55 }}>
+                                {sec.detail}
                               </div>
-                              <p style={{ color: '#D1D5DB', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
-                                {claimResult.reimbursement_guidance || 'Submit bills after treatment'}
-                              </p>
                             </div>
-                          )}
+                          ))}
                         </div>
                       )}
 
-                      {/* Details Grid */}
+                      {/* ── Details Grid ───────────────────────────── */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                         {claimResult.covered_items?.length > 0 && (
                           <div style={{ background: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: 10, padding: '14px 16px' }}>
@@ -677,8 +667,58 @@ const Insurance = () => {
                         )}
                       </div>
 
-                      {/* Claim Steps */}
-                      {claimResult.claim_steps?.length > 0 && (
+                      {/* ── How to Claim ───────────────────────────── */}
+                      {claimResult.how_to_claim && (
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                          {claimResult.how_to_claim.cashless?.length > 0 && (
+                            <div style={{
+                              flex: 1, minWidth: 240,
+                              background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)',
+                              borderRadius: 10, padding: '14px 16px'
+                            }}>
+                              <div style={{ color: '#60A5FA', fontWeight: 700, fontSize: '0.75rem', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                💳 How to Claim — Cashless
+                              </div>
+                              {claimResult.how_to_claim.cashless.map((step, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-start' }}>
+                                  <div style={{
+                                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                                    background: 'rgba(37,99,235,0.2)', border: '1px solid rgba(37,99,235,0.3)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#60A5FA', fontWeight: 700, fontSize: '0.68rem'
+                                  }}>{i + 1}</div>
+                                  <div style={{ color: '#D1D5DB', fontSize: '0.78rem', lineHeight: 1.55, paddingTop: 2 }}>{step}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {claimResult.how_to_claim.reimbursement?.length > 0 && (
+                            <div style={{
+                              flex: 1, minWidth: 240,
+                              background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)',
+                              borderRadius: 10, padding: '14px 16px'
+                            }}>
+                              <div style={{ color: '#A78BFA', fontWeight: 700, fontSize: '0.75rem', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                🔄 How to Claim — Reimbursement
+                              </div>
+                              {claimResult.how_to_claim.reimbursement.map((step, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-start' }}>
+                                  <div style={{
+                                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                                    background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: '#A78BFA', fontWeight: 700, fontSize: '0.68rem'
+                                  }}>{i + 1}</div>
+                                  <div style={{ color: '#D1D5DB', fontSize: '0.78rem', lineHeight: 1.55, paddingTop: 2 }}>{step}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Fallback: legacy claim_steps */}
+                      {!claimResult.how_to_claim && claimResult.claim_steps?.length > 0 && (
                         <div style={{ background: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: 10, padding: '14px 16px' }}>
                           <div style={{ color: '#60A5FA', fontWeight: 700, fontSize: '0.75rem', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📋 How to File Your Claim</div>
                           {claimResult.claim_steps.map((step, i) => (
@@ -707,6 +747,69 @@ const Insurance = () => {
                         </div>
                       )}
 
+                      {/* ── Contact Details ────────────────────────── */}
+                      {claimResult.contact_details && (
+                        <div style={{ background: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: 10, padding: '14px 16px' }}>
+                          <div style={{ color: '#F59E0B', fontWeight: 700, fontSize: '0.75rem', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            📞 Insurer Contact Details
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+                            {claimResult.contact_details.phone && (
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                <span style={{ fontSize: '1rem', marginTop: 1 }}>📱</span>
+                                <div>
+                                  <div style={{ color: '#9CA3AF', fontSize: '0.68rem', fontWeight: 600, marginBottom: 2 }}>HELPLINE / TOLL-FREE</div>
+                                  <div style={{ color: '#F8F9FA', fontSize: '0.82rem', fontWeight: 500 }}>{claimResult.contact_details.phone}</div>
+                                </div>
+                              </div>
+                            )}
+                            {claimResult.contact_details.email && (
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                <span style={{ fontSize: '1rem', marginTop: 1 }}>✉️</span>
+                                <div>
+                                  <div style={{ color: '#9CA3AF', fontSize: '0.68rem', fontWeight: 600, marginBottom: 2 }}>EMAIL</div>
+                                  <div style={{ color: '#60A5FA', fontSize: '0.82rem', wordBreak: 'break-all' }}>{claimResult.contact_details.email}</div>
+                                </div>
+                              </div>
+                            )}
+                            {claimResult.contact_details.website && (
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                <span style={{ fontSize: '1rem', marginTop: 1 }}>🌐</span>
+                                <div>
+                                  <div style={{ color: '#9CA3AF', fontSize: '0.68rem', fontWeight: 600, marginBottom: 2 }}>WEBSITE</div>
+                                  <a href={claimResult.contact_details.website.startsWith('http') ? claimResult.contact_details.website : `https://${claimResult.contact_details.website}`}
+                                    target="_blank" rel="noreferrer"
+                                    style={{ color: '#60A5FA', fontSize: '0.82rem' }}>
+                                    {claimResult.contact_details.website}
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+                            {claimResult.contact_details.tpa_name && (
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                <span style={{ fontSize: '1rem', marginTop: 1 }}>🏢</span>
+                                <div>
+                                  <div style={{ color: '#9CA3AF', fontSize: '0.68rem', fontWeight: 600, marginBottom: 2 }}>TPA</div>
+                                  <div style={{ color: '#F8F9FA', fontSize: '0.82rem' }}>{claimResult.contact_details.tpa_name}</div>
+                                  {claimResult.contact_details.tpa_phone && (
+                                    <div style={{ color: '#D1D5DB', fontSize: '0.75rem', marginTop: 2 }}>{claimResult.contact_details.tpa_phone}</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          {claimResult.insurer_address && (
+                            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #2A2D3A', display: 'flex', gap: 8 }}>
+                              <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
+                              <div>
+                                <div style={{ color: '#9CA3AF', fontSize: '0.68rem', fontWeight: 600, marginBottom: 2 }}>REGISTERED ADDRESS</div>
+                                <div style={{ color: '#D1D5DB', fontSize: '0.78rem', lineHeight: 1.55 }}>{claimResult.insurer_address}</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Aarogyasri Note */}
                       {claimResult.aarogyasri_applicable && (
                         <div style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 10, padding: '10px 14px', fontSize: '0.78rem', color: '#93C5FD' }}>
@@ -718,6 +821,7 @@ const Insurance = () => {
                       <div style={{ fontSize: '0.7rem', color: '#6B7280', padding: '8px 12px', background: 'rgba(107,114,128,0.05)', borderRadius: 8, lineHeight: 1.5 }}>
                         ⚠️ This is an AI analysis for guidance only. Actual claim decisions are made by your insurer. Always consult your TPA or insurance agent for final confirmation.
                       </div>
+
                     </div>
                   )}
                 </div>

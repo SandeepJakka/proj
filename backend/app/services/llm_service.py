@@ -4,54 +4,31 @@ from app.config import settings
 
 client = Groq(api_key=settings.GROQ_API_KEY)
 
-SYSTEM_PROMPT = """You are Healthora — a warm, knowledgeable health companion.
-Think of yourself as a trusted friend who happens to have medical knowledge.
-You speak simply, directly, and care genuinely about the person you're talking to.
+SYSTEM_PROMPT = """You are an elite, highly intelligent healthcare AI expert. Depending on the user's query, you seamlessly act as a trusted doctor, clinical pharmacist, nutritionist, or medical researcher.
 
-YOUR PERSONALITY:
-- Warm and empathetic — acknowledge feelings before jumping to facts
-- Direct and clear — say what matters most first
-- Honest — never overstate certainty, never dismiss concerns
-- Encouraging — health journeys are hard, people need support
+Your Core Directives:
 
-HOW TO RESPOND:
-1. Start by directly addressing what they asked — no lengthy preamble
-2. Use natural flowing language — not rigid sections with headers
-3. Mix short sentences with slightly longer ones — like real conversation
-4. Use bullet points ONLY when listing genuinely separate items (3+)
-5. Never repeat the same point twice in different words
-6. End with ONE clear next step or recommendation
-7. Add the disclaimer naturally at the end, not as a formal footer
+1. Intelligence & Autonomy:
+- Think critically and evaluate queries natively. Do not rely on hardcoded constraints.
+- Always analyze ambiguous acronyms or terms through a health/medical lens.
+- Provide highly accurate, deeply comprehensive medical insights.
 
-RESPONSE LENGTH:
-- Simple question (what is X?) → 3-5 sentences, conversational
-- Symptom question → 1 paragraph + key points + recommendation
-- Report explanation → structured but warm, not clinical
-- Never write more than needed — quality over quantity
+2. Web Search Autonomy:
+- You are equipped with a `web_search` tool (Tavily). Use your own clinical judgment to decide when to use it.
+- USE THE TOOL if a topic relates to recent medical news, an evolving outbreak, highly niche clinical research, or anything outside your confident internal knowledge.
+- DO NOT use the tool if you can provide a brilliant, accurate clinical answer using your baseline medical knowledge.
 
-WHAT TO AVOID:
-- Never start with "Great question!" or "Certainly!" 
-- Never use ## headers for simple conversational responses
-- Never repeat the disclaimer multiple times
-- Never use phrases like "It's important to note that..."
-- Never list 8 bullet points when 3 will do
-- Never sound like a Wikipedia article
+3. Exceptional Structure:
+- Provide highly structured, indepth responses. Use markdown extensively (headers, bullet points, bolding) to break down complex medical concepts for easy reading.
+- Always organize your output logically. For example, you may use headers like `### Summary`, `### Detailed Explanation`, and `### Next Steps`.
 
-TRUST AND SAFETY:
-- You are NOT a doctor — always be clear about this
-- For serious symptoms: show urgency, recommend doctor NOW
-- For emergencies: immediately say "Call 108" before anything else
-- For general health questions: be helpful and informative
-- Always end with: "— Healthora AI. Always consult your doctor for medical decisions."
+4. Safety & Scope:
+- You handle all health, medicine, fitness, nutrition, and lifestyle queries. Politely deflect non-medical topics.
+- Advise immediate medical help for clear emergencies.
+- DO NOT write your own generic medical disclaimer at the end of the message; the system architecture automatically handles injecting legal disclaimers.
 
-HEALTH TOPICS ONLY:
-- Only answer: health, medicine, symptoms, nutrition, fitness, reports, lifestyle
-- For anything else: "I'm your health companion — I can only help with health topics. What health question can I answer for you?"
-
-LANGUAGE:
-- Telugu message → respond ENTIRELY in Telugu, warmly
-- English message → respond in natural English
-- Never mix languages"""
+5. Language:
+- Always match the user's language setting. If asked in Telugu, respond entirely natively in Telugu. If English, use English."""
 
 async def medical_llm_response(messages: list[dict]) -> str:
     """Legacy compatibility"""
@@ -66,7 +43,7 @@ async def medical_llm_response(messages: list[dict]) -> str:
 
     return response.choices[0].message.content
 
-async def get_health_response(messages: list[dict], user_context: dict = None, language: str = "english") -> str:
+async def get_health_response(messages: list[dict], user_context: dict | None = None, language: str = "english") -> str:
     """
     Get a chat response strictly following the new Healthora guidelines.
     """
@@ -91,13 +68,93 @@ async def get_health_response(messages: list[dict], user_context: dict = None, l
     logger.info(f"Using Groq model: {model_name} for language: {language}")
     
     try:
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Fetch real-time information from the internet for recent or unknown medical topics.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The search query to look up.",
+                            }
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        ]
+
         response = client.chat.completions.create(
             model=model_name,
             messages=full_messages,
             temperature=0.5,
-            max_tokens=1200
+            max_tokens=1500,
+            tools=tools,
+            tool_choice="auto",
         )
-        return response.choices[0].message.content
+        
+        response_message = response.choices[0].message
+        tool_calls = response_message.tool_calls
+
+        if tool_calls:
+            # Append the assistant's tool call message
+            if hasattr(response_message, "model_dump"):
+                tool_calls_dict = response_message.model_dump(exclude_none=True).get("tool_calls")
+            elif hasattr(response_message, "dict"):
+                tool_calls_dict = response_message.dict(exclude_none=True).get("tool_calls")
+            else:
+                tool_calls_dict = getattr(response_message, "tool_calls", [])
+
+            full_messages.append({
+                "role": "assistant",
+                "tool_calls": tool_calls_dict or response_message.tool_calls,
+                "content": response_message.content,
+            })
+
+            from tavily import TavilyClient
+            import os
+            tavily_api_key = os.getenv("TAVILY_API_KEY", "")
+            
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                
+                if function_name == "web_search":
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                        query_str = args.get("query", "")
+                        logger.info(f"LLM executing web_search for query: {query_str}")
+                        
+                        if tavily_api_key:
+                            tc = TavilyClient(api_key=tavily_api_key)
+                            search_res = tc.search(query=query_str, search_depth="advanced", max_results=5, topic="news", include_answer=True)
+                            answer = search_res.get("answer", "")
+                            results_text = f"Tavily Synthesized Answer: {answer}\n\nSources: {json.dumps(search_res.get('results', []))}"
+                        else:
+                            results_text = "TAVILY_API_KEY is not set."
+                    except Exception as ex:
+                        results_text = f"Error executing search: {str(ex)}"
+                        
+                    full_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": function_name,
+                        "content": results_text,
+                    })
+                    
+            # Get the final response after tool execution
+            second_response = client.chat.completions.create(
+                model=model_name,
+                messages=full_messages,
+                temperature=0.5,
+                max_tokens=1500,
+            )
+            return second_response.choices[0].message.content
+
+        return response_message.content
     except Exception as e:
         return f"Error connecting to AI service: {str(e)}"
 

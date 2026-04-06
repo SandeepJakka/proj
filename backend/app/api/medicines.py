@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+import httpx
 from pydantic import BaseModel
 from typing import List, Optional
 import asyncio
@@ -8,6 +9,11 @@ import re
 
 from app.db.deps import get_current_user
 from app.db import models
+from app.services.medicine_verification_service import (
+    verify_medicine,
+    verify_medicines_batch,
+    normalize_medicine_name,
+)
 
 router = APIRouter(prefix="/api/medicines", tags=["Medicines"])
 logger = logging.getLogger(__name__)
@@ -192,9 +198,11 @@ async def get_jan_aushadhi_info(medicine_name: str) -> dict:
     try:
         # Use OpenFDA to get generic name
         search = medicine_name.split()[0]  # Use first word
+        print("Calling OpenFDA with:", medicine_name)
         url = f"https://api.fda.gov/drug/label.json?search=brand_name:{search}&limit=1"
         async with httpx.AsyncClient(timeout=8) as client:
             res = await client.get(url)
+            print("OpenFDA response:", res.status_code, res.text[:200])
             if res.status_code == 200:
                 data = res.json()
                 results = data.get('results', [])
@@ -202,7 +210,8 @@ async def get_jan_aushadhi_info(medicine_name: str) -> dict:
                     generic = results[0].get('generic_name', [''])[0]
                     if generic:
                         generic_name = generic.title()
-    except Exception:
+    except Exception as e:
+        print("Jan Aushadhi OpenFDA error:", str(e))
         pass
 
     return {
@@ -211,6 +220,58 @@ async def get_jan_aushadhi_info(medicine_name: str) -> dict:
         'savings_note': 'Jan Aushadhi stores offer 50-90% savings vs branded medicines',
         'find_store': 'Visit janaushadhi.gov.in or search "Jan Aushadhi" on Google Maps'
     }
+
+
+async def fetch_real_price(medicine_name: str):
+    """
+    Fetch real prices from online pharmacies.
+    Returns dict with prices or None if scraping fails.
+    """
+    import asyncio
+    try:
+        # Run scraping concurrently
+        mg_task = scrape_1mg_price(medicine_name)
+        pe_task = scrape_pharmeasy_price(medicine_name)
+        
+        mg_data, pe_data = await asyncio.gather(mg_task, pe_task, return_exceptions=True)
+        
+        results = {}
+        found = False
+        
+        if mg_data and not isinstance(mg_data, Exception) and mg_data.get('found'):
+            prices = [r.get('price', '') for r in mg_data.get('results', []) if r.get('price')]
+            if prices:
+                results["1mg"] = prices[0]
+                found = True
+                
+        if pe_data and not isinstance(pe_data, Exception) and pe_data.get('found'):
+            prices = [r.get('price', '') for r in pe_data.get('results', []) if r.get('price')]
+            if prices:
+                results["pharmeasy"] = prices[0]
+                found = True
+        
+        if found:
+            results["source"] = "real"
+            return results
+            
+        return None
+    except Exception:
+        return None
+
+
+def extract_json(text: str):
+    import json
+    decoder = json.JSONDecoder()
+    text = text.strip()
+
+    for i in range(len(text)):
+        try:
+            obj, end = decoder.raw_decode(text[i:])
+            return obj
+        except json.JSONDecodeError:
+            continue
+
+    return None
 
 
 # ── Main endpoint ────────────────────────────────────────────
@@ -224,56 +285,67 @@ async def check_medicine_prices(
     req: PriceCheckRequest,
     current_user: models.User = Depends(get_current_user)
 ):
-    """
-    Medicine price comparison with REAL scraped prices from 1mg
-    and PharmEasy. Falls back to AI estimates if scraping fails.
-    """
+    # TODO: Re-enable after integrating real data sources (PharmEasy / 1mg / RAG) to ensure accuracy
+    return {
+        "success": False,
+        "error": "Price check is temporarily unavailable to ensure accuracy."
+    }
+
+async def _old_implementation_hidden_for_safety(
+    req: PriceCheckRequest,
+    current_user: models.User = Depends(get_current_user)
+):
     from app.services.llm_service import medical_llm_response
 
     if not req.medicines:
-        return {"success": False, "error": "No medicines provided"}
+        return {
+            "success": True, 
+            "data": [], 
+            "note": "No medicines provided for price check"
+        }
+    
+    print("Input medicines:", req.medicines)
 
-    medicines = [m.strip() for m in req.medicines if m.strip()]
+    # ── Step 0: Verify & normalise all medicine names ─────────────────────
+    raw_medicines = [m.strip() for m in req.medicines if m.strip()]
+    verification_results = await verify_medicines_batch(raw_medicines)
 
-    # Step 1: Scrape real prices concurrently
-    scrape_tasks = []
-    for med in medicines[:5]:  # Limit to 5 medicines
-        scrape_tasks.append(
-            asyncio.gather(
-                scrape_1mg_price(med),
-                scrape_pharmeasy_price(med),
-                get_jan_aushadhi_info(med),
-                return_exceptions=True
-            )
-        )
+    # Build a map: original_name → verification dict
+    verification_map: dict[str, dict] = {
+        raw: vr for raw, vr in zip(raw_medicines, verification_results)
+    }
 
-    scrape_results = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+    # Use corrected names for scraping / AI; fall back to original if unverified
+    medicines = [
+        (vr.get("corrected_name") or raw) if vr.get("verified") else raw
+        for raw, vr in zip(raw_medicines, verification_results)
+    ]
+
+    print("Verified medicines:", medicines)
+
+    # Step 1: Fetch real prices concurrently
+    real_prices = {}
+    price_tasks = []
+    for med in medicines[:5]:
+        price_tasks.append(fetch_real_price(med))
+    
+    price_results = await asyncio.gather(*price_tasks, return_exceptions=True)
+    
+    for med, res in zip(medicines[:5], price_results):
+        if res and not isinstance(res, Exception):
+            real_prices[med] = res
 
     # Step 2: Build context for AI with scraped data
     scraped_context = ""
-    for i, med in enumerate(medicines[:5]):
-        scraped_context += f"\n\nMedicine: {med}\n"
-        if i < len(scrape_results) and not isinstance(scrape_results[i], Exception):
-            mg_data, pe_data, ja_data = scrape_results[i]
-
-            if mg_data and not isinstance(mg_data, Exception) and mg_data.get('found'):
-                prices = [r.get('price', '') for r in mg_data.get('results', []) if r.get('price')]
-                if prices:
-                    scraped_context += f"Real 1mg prices found: {', '.join(prices[:2])}\n"
-
-            if pe_data and not isinstance(pe_data, Exception) and pe_data.get('found'):
-                prices = [r.get('price', '') for r in pe_data.get('results', []) if r.get('price')]
-                if prices:
-                    scraped_context += f"Real PharmEasy prices found: {', '.join(prices[:2])}\n"
-
-            if ja_data and not isinstance(ja_data, Exception):
-                scraped_context += f"Generic name: {ja_data.get('generic_name', med)}\n"
-                scraped_context += "Jan Aushadhi: Available at govt stores\n"
+    for med, pdata in real_prices.items():
+        scraped_context += f"Medicine: {med}\nReal prices found: "
+        if "1mg" in pdata: scraped_context += f"1mg: {pdata['1mg']} "
+        if "pharmeasy" in pdata: scraped_context += f"PharmEasy: {pdata['pharmeasy']} "
+        scraped_context += "\n"
 
     # Step 3: AI enrichment with real price context
-    system_prompt = """You are a pharmaceutical pricing expert for India/AP.
-You have been given REAL scraped prices from 1mg and PharmEasy.
-Use these real prices as the basis. Fill in missing information with accurate estimates.
+    system_prompt = """You are a pharmaceutical pricing expert for India. 
+You provide a hybrid of real-time scraped prices and accurate AI estimates.
 
 Respond ONLY with valid JSON:
 {
@@ -281,41 +353,33 @@ Respond ONLY with valid JSON:
     {
       "name": "Medicine name",
       "brand_name": "Brand name",
-      "generic_name": "Generic/salt name",
+      "generic_name": "Generic name",
       "category": "Category",
-      "brand_price": "Real price from scraping or estimate",
-      "generic_price": "Generic price estimate",
-      "jan_aushadhi_price": "Jan Aushadhi estimate (50-90% less than brand)",
-      "jan_aushadhi_available": true,
-      "savings_percent": "% savings with generic",
+      "brand_price": "Price string",
+      "generic_price": "Estimate",
+      "jan_aushadhi_price": "50-90% less than brand",
       "online_prices": {
-        "1mg": "Real scraped price or estimate",
-        "pharmeasy": "Real scraped price or estimate",
-        "netmeds": "Estimate"
+        "1mg": "Price or 'Not available'",
+        "pharmeasy": "Price or 'Not available'",
+        "netmeds": "Estimated price"
       },
-      "price_source": "scraped|estimated",
-      "alternatives": [
-        {
-          "name": "Alternative name",
-          "type": "generic|substitute",
-          "price": "Price",
-          "note": "Brief note"
-        }
-      ],
-      "buying_tip": "Practical tip for AP buyers",
-      "prescription_required": true or false
+      "source": "real|estimated",
+      "confidence": 0.9,
+      "price_label": "Real price|Estimated price",
+      "alternatives": [],
+      "buying_tip": "Tip",
+      "prescription_required": true
     }
   ],
-  "total_brand_cost": "Monthly total",
-  "total_generic_cost": "Monthly generic total",
-  "total_savings": "Monthly savings",
-  "data_freshness": "Prices scraped in real-time from 1mg/PharmEasy",
   "summary_tip": "Money-saving tip"
 }
 
-IMPORTANT: If real scraped prices were provided, use them.
-Mark price_source as "scraped" when using real data.
-Always respond in the requested language."""
+RULES:
+1. If REAL price data is provided in context, use it, set source="real" and confidence=0.9.
+2. If NO real data is provided, use your knowledge, set source="estimated" and confidence=0.4.
+3. Never return a price without a source label.
+4. If medicine is common (paracetamol, ibuprofen, etc.) and real data fails, provide very accurate estimates based on last known Indian market rates.
+5. Return ONLY valid JSON. No text outside the JSON object. """
 
     user_prompt = f"""Medicines to check:
 {chr(10).join(f"- {m}" for m in medicines)}
@@ -333,31 +397,84 @@ Provide complete price comparison using real data where available."""
         ])
 
         text = response.strip()
-        if '```json' in text:
-            text = text.split('```json')[1].split('```')[0].strip()
-        elif '```' in text:
-            text = text.split('```')[1].split('```')[0].strip()
-
-        data = json.loads(text)
+        print("LLM RAW (first 300 chars):", text[:300])
+        
+        data = extract_json(text)
+        
+        if data is None:
+            print("Failed to extract JSON from LLM")
+            return {
+                "success": True,
+                "data": [],
+                "note": "AI response could not be parsed"
+            }
 
         # Add scraping metadata
         data['scraping_attempted'] = True
-        data['real_time_data'] = any(
-            not isinstance(r, Exception) and
-            any(
-                not isinstance(x, Exception) and x and x.get('found')
-                for x in (r if isinstance(r, (list, tuple)) else [])
-            )
-            for r in scrape_results
-        )
+        data['real_time_data'] = len(real_prices) > 0
+        data['scraped_medicines'] = list(real_prices.keys())
+
+        # ── Attach verification metadata per medicine ──────────────────────
+        if 'medicines' in data and isinstance(data['medicines'], list):
+            for med_entry in data['medicines']:
+                # Try to match by corrected name or original name
+                entry_name = (med_entry.get('name') or '').lower().strip()
+                for raw_name, vr in verification_map.items():
+                    if (
+                        vr['corrected_name'].lower() == entry_name
+                        or raw_name.lower() == entry_name
+                        or normalize_medicine_name(raw_name) == entry_name
+                    ):
+                        med_entry['verification'] = {
+                            'input_name':          vr['input_name'],
+                            'original_name':       vr['original_name'],
+                            'corrected_name':      vr['corrected_name'],
+                            'verified':            vr['verified'],
+                            'verification_status': vr['verification_status'],
+                            'confidence':          vr['confidence'],
+                            'similarity_score':    vr['similarity_score'],
+                            'confidence_reason':   vr['confidence_reason'],
+                            'source':              vr['source'],
+                            'standardized':        vr['standardized'],
+                        }
+                        # Surface uses/warnings at the medicine level if empty
+                        if vr.get('uses') and not med_entry.get('uses'):
+                            med_entry['uses'] = vr['uses']
+                        if vr.get('warnings') and not med_entry.get('warnings'):
+                            med_entry['warnings'] = vr['warnings']
+                        break
+
+        data['verification_summary'] = [
+            {
+                'input':               vr['input_name'],
+                'original_name':       vr['original_name'],
+                'corrected':           vr['corrected_name'],
+                'verified':            vr['verified'],
+                'verification_status': vr['verification_status'],
+                'confidence':          vr['confidence'],
+                'similarity_score':    vr['similarity_score'],
+                'confidence_reason':   vr['confidence_reason'],
+                'source':              vr['source'],
+            }
+            for vr in verification_results
+        ]
+
+        if not data or not data.get('medicines'):
+            return {
+                "success": True,
+                "data": [],
+                "note": "No pricing data found for this medicine"
+            }
 
         return {"success": True, "data": data}
 
     except Exception as e:
-        logger.error(f"Price check error: {e}")
+        print("ERROR:", str(e))
         return {
-            "success": False,
-            "error": "Could not fetch prices. Please try again."
+            "success": True,
+            "data": [],
+            "error": str(e),
+            "note": "A system error occurred while fetching prices"
         }
 
 
@@ -369,11 +486,18 @@ async def check_drug_interactions(
 ):
     """Check drug interactions using OpenFDA API + AI analysis."""
     import httpx
+    print("Checking interactions for:", req.medicines)
 
-    if len(req.medicines) < 2:
+    if not req.medicines or len(req.medicines) < 2:
         return {
-            "success": False,
-            "error": "Need at least 2 medicines to check interactions"
+            "success": True,
+            "data": {
+                "interactions": [],
+                "safe_combinations": [],
+                "overall_risk": "safe",
+                "summary": "At least 2 medicines are required to check for interactions."
+            },
+            "note": "No interactions found"
         }
 
     # Fetch FDA interaction data
@@ -382,11 +506,13 @@ async def check_drug_interactions(
         for med in req.medicines[:5]:
             try:
                 search = med.split()[0].lower()
+                print("Calling OpenFDA for interaction:", med)
                 url = (
                     f"https://api.fda.gov/drug/label.json?"
                     f"search=warnings:{search}&limit=1"
                 )
                 res = await client.get(url)
+                print("OpenFDA interaction response:", res.status_code, res.text[:200])
                 if res.status_code == 200:
                     data = res.json()
                     results = data.get('results', [])
@@ -397,7 +523,8 @@ async def check_drug_interactions(
                                 'medicine': med,
                                 'fda_warnings': warnings[:500]
                             })
-            except Exception:
+            except Exception as e:
+                print(f"FDA interaction lookup error for {med}:", str(e))
                 continue
 
     # AI analysis of interactions
@@ -407,7 +534,7 @@ async def check_drug_interactions(
     fda_context = "\n".join(
         f"{d['medicine']}: {d['fda_warnings']}"
         for d in fda_data
-    ) if fda_data else "Use your medical knowledge"
+    ) if fda_data else "No specific FDA interaction data found. Use your medical knowledge."
 
     system_prompt = """You are a clinical pharmacist checking drug interactions.
 Respond ONLY with valid JSON:
@@ -443,17 +570,34 @@ Language: {req.language}"""
             {"role": "user", "content": user_prompt}
         ])
         text = response.strip()
-        if '```json' in text:
-            text = text.split('```json')[1].split('```')[0].strip()
-        elif '```' in text:
-            text = text.split('```')[1].split('```')[0].strip()
+        
+        # Robust JSON extraction: take everything between first { and last }
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
+        if start_idx != -1 and end_idx != -1:
+            text = text[start_idx:end_idx+1]
+        
+        try:
+            data, index = json_mod.JSONDecoder().raw_decode(text)
+        except json_mod.JSONDecodeError as je:
+            print("Interaction JSON Decode Error:", str(je))
+            raise je
+        
+        if not data.get('interactions') and not data.get('safe_combinations'):
+             return {
+                "success": True,
+                "data": data,
+                "note": "No interactions found"
+            }
 
-        data = json_mod.loads(text)
         return {"success": True, "data": data, "fda_data_used": len(fda_data) > 0}
 
     except Exception as e:
-        logger.error(f"Interaction check error: {e}")
-        return {"success": False, "error": "Could not check interactions"}
+        print("ERROR:", str(e))
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # ── Medicine info endpoint ───────────────────────────────────
@@ -470,19 +614,28 @@ async def get_medicine_info(
 ):
     """
     Get medicine information from web + AI.
-    Uses OpenFDA API for verified drug data,
-    falls back to AI knowledge if not found.
+    Runs the medicine through the verification layer first, then
+    uses OpenFDA API for verified drug data, falls back to AI knowledge.
     """
     import httpx
     import json as json_mod
     from app.services.llm_service import medical_llm_response
 
+    # ── Step 0: Verify & correct the medicine name ─────────────────────────
+    verification = await verify_medicine(req.medicine_name)
+    verified_name = verification["corrected_name"] if verification["verified"] else req.medicine_name
+    logger.info(
+        f"medicine-info: '{req.medicine_name}' → verified='{verified_name}' "
+        f"(confidence={verification['confidence']}, source={verification['source']})"
+    )
+
     fda_data = {}
     web_verified = False
 
     # Step 1: Search OpenFDA for real medicine data
+    # Prefer the verified corrected name for the search term
     try:
-        search_term = req.medicine_name.split()[0]
+        search_term = verified_name.split()[0]
         async with httpx.AsyncClient(timeout=8) as client:
             # Try brand name search
             res = await client.get(
@@ -495,7 +648,7 @@ async def get_medicine_info(
                 if results:
                     label = results[0]
                     fda_data = {
-                        'brand_name': label.get('openfda', {}).get('brand_name', [req.medicine_name])[0],
+                        'brand_name': label.get('openfda', {}).get('brand_name', [verified_name])[0],
                         'generic_name': label.get('openfda', {}).get('generic_name', [''])[0],
                         'purpose': ' '.join(label.get('purpose', []))[:300],
                         'indications': ' '.join(label.get('indications_and_usage', []))[:400],
@@ -517,7 +670,7 @@ async def get_medicine_info(
                     if results:
                         label = results[0]
                         fda_data = {
-                            'brand_name': label.get('openfda', {}).get('brand_name', [req.medicine_name])[0],
+                            'brand_name': label.get('openfda', {}).get('brand_name', [verified_name])[0],
                             'generic_name': label.get('openfda', {}).get('generic_name', [''])[0],
                             'purpose': ' '.join(label.get('purpose', []))[:300],
                             'indications': ' '.join(label.get('indications_and_usage', []))[:400],
@@ -526,6 +679,20 @@ async def get_medicine_info(
                             'side_effects': ' '.join(label.get('adverse_reactions', []))[:300],
                         }
                         web_verified = True
+
+        # Merge pre-fetched verification FDA data if OpenFDA above returned nothing
+        if not fda_data and verification.get('uses'):
+            fda_data = {
+                'brand_name':  verified_name,
+                'generic_name': verification.get('generic_name', verified_name),
+                'purpose':     verification.get('uses', ''),
+                'indications': verification.get('uses', ''),
+                'warnings':    verification.get('warnings', ''),
+                'dosage_admin': '',
+                'side_effects': '',
+            }
+            web_verified = verification['verified']
+
     except Exception as e:
         logger.warning(f"FDA lookup failed: {e}")
 
@@ -585,7 +752,8 @@ CRITICAL: Your response must start with { and end with }
 Do not add any text before or after the JSON object.
 Do not use markdown formatting."""
 
-    user_prompt = f"""Medicine: {req.medicine_name}
+    user_prompt = f"""Medicine: {verified_name}
+Original input: {req.medicine_name}
 Dosage: {req.dosage or 'Not specified'}
 Language: {req.language}
 {fda_context[:500] if fda_context else 'Use medical knowledge for this Indian medicine.'}
@@ -637,6 +805,21 @@ Return JSON only. Keep each field concise — max 2 sentences per field."""
 
         data['web_verified'] = web_verified
         data['fda_data_used'] = bool(fda_data)
+
+        # ── Attach verification metadata ───────────────────────────────────
+        data['verification'] = {
+            'input_name':          verification['input_name'],
+            'original_name':       verification['original_name'],
+            'corrected_name':      verification['corrected_name'],
+            'verified':            verification['verified'],
+            'verification_status': verification['verification_status'],
+            'confidence':          verification['confidence'],
+            'similarity_score':    verification['similarity_score'],
+            'confidence_reason':   verification['confidence_reason'],
+            'source':              verification['source'],
+            'standardized':        verification['standardized'],
+        }
+
         return {"success": True, "data": data}
 
     except Exception as e:

@@ -76,7 +76,7 @@ const Analyze = () => {
             <nav className="navbar">
                 <div className="navbar-left">
                     <div className="logo-icon">H</div>
-                    <span className="logo-text" style={{ fontSize: '1.2rem', fontWeight: 800 }}>Healthora</span>
+                    <span className="logo-text" style={{ fontSize: '1.2rem', fontWeight: 800 }}>Vaidya Assist</span>
                 </div>
                 <div className="navbar-right">
                     <div className="lang-toggle">

@@ -38,7 +38,7 @@ const Sidebar = ({ open, onClose }) => {
       <div className="sidebar-logo">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="logo-icon">H</div>
-          <span className="logo-text">Healthora</span>
+          <span className="logo-text">Vaidya Assist</span>
         </div>
         {/* Close button — mobile only */}
         <button

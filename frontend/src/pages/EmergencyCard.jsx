@@ -56,7 +56,7 @@ const EmergencyCard = () => {
       <p style={{ color: '#9CA3AF', fontSize: '0.875rem' }}>
         This card may not exist or has been removed
       </p>
-      <Link to="/" style={{ color: '#2563EB' }}>Go to Healthora</Link>
+      <Link to="/" style={{ color: '#2563EB' }}>Go to Vaidya Assist</Link>
     </div>
   )
 
@@ -348,7 +348,7 @@ const EmergencyCard = () => {
             color: '#9CA3AF', fontSize: '0.75rem',
             textDecoration: 'none'
           }}>
-            Create your own Emergency Card at Healthora →
+            Create your own Emergency Card at Vaidya Assist →
           </Link>
         </div>
       </div>

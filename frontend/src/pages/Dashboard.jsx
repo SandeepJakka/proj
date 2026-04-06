@@ -38,6 +38,7 @@ const Dashboard = () => {
   const [healthNews, setHealthNews] = useState([])
   const [newsLoading, setNewsLoading] = useState(false)
   const [newsOpen, setNewsOpen] = useState(false)
+  const [selectedArticle, setSelectedArticle] = useState(null) // article reader modal
 
   useEffect(() => {
     const load = async () => {
@@ -199,7 +200,8 @@ const Dashboard = () => {
   const fetchHealthNews = async () => {
     setNewsLoading(true)
     try {
-      const res = await fetch('http://localhost:8000/api/news/health-news')
+      // cache: 'no-store' ensures every refresh hits the server fresh
+      const res = await fetch('http://localhost:8000/api/news/health-news', { cache: 'no-store' })
       const data = await res.json()
       setHealthNews(data.news || [])
     } catch {
@@ -433,6 +435,136 @@ const Dashboard = () => {
         </button>
       </div>
 
+      {/* ── Article Reader Modal ───────────────────────────── */}
+      {selectedArticle && (
+        <div
+          onClick={() => setSelectedArticle(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px 16px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#1A1D27',
+              border: '1px solid #2A2D3A',
+              borderRadius: 16,
+              width: '100%', maxWidth: 720,
+              maxHeight: '90vh',
+              display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal header */}
+            <div style={{
+              padding: '14px 20px',
+              borderBottom: '1px solid #2A2D3A',
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', flexShrink: 0,
+            }}>
+              {(() => {
+                const catMeta = {
+                  medical:  { label: '🏥 Medical',  color: '#60A5FA', bg: 'rgba(96,165,250,0.12)' },
+                  wellness: { label: '🥗 Wellness', color: '#34D399', bg: 'rgba(52,211,153,0.12)' },
+                  research: { label: '🔬 Research', color: '#A78BFA', bg: 'rgba(167,139,250,0.12)' },
+                }[selectedArticle.category] || { label: '📰 Health', color: '#10B981', bg: 'rgba(16,185,129,0.12)' };
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ background: catMeta.bg, color: catMeta.color, fontSize: '0.65rem', padding: '3px 8px', borderRadius: 4, fontWeight: 700 }}>
+                      {catMeta.label}
+                    </span>
+                    <span style={{ color: '#9CA3AF', fontSize: '0.75rem' }}>{selectedArticle.source}</span>
+                    {selectedArticle.published && (
+                      <span style={{ color: '#6B7280', fontSize: '0.72rem' }}>
+                        · {new Date(selectedArticle.published).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+              <button
+                onClick={() => setSelectedArticle(null)}
+                style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: 4 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
+              {/* Hero image */}
+              {selectedArticle.image && (
+                <img
+                  src={selectedArticle.image}
+                  alt={selectedArticle.title}
+                  style={{
+                    width: '100%', maxHeight: 260,
+                    objectFit: 'cover', borderRadius: 10,
+                    marginBottom: 20,
+                  }}
+                  onError={e => { e.currentTarget.style.display = 'none'; }}
+                />
+              )}
+
+              {/* Title */}
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#F8F9FA', lineHeight: 1.5, marginBottom: 16 }}>
+                {selectedArticle.title}
+              </h2>
+
+              {/* Full content */}
+              {selectedArticle.content ? (
+                <div style={{ color: '#D1D5DB', fontSize: '0.88rem', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                  {selectedArticle.content}
+                </div>
+              ) : (
+                <p style={{ color: '#9CA3AF', fontSize: '0.85rem' }}>
+                  {selectedArticle.description || 'No preview available.'}
+                </p>
+              )}
+            </div>
+
+            {/* Footer CTA */}
+            {selectedArticle.link && (
+              <div style={{
+                padding: '14px 24px',
+                borderTop: '1px solid #2A2D3A',
+                flexShrink: 0,
+                display: 'flex', justifyContent: 'flex-end', gap: 10,
+              }}>
+                <button
+                  onClick={() => setSelectedArticle(null)}
+                  style={{
+                    padding: '8px 16px', borderRadius: 8,
+                    background: 'transparent', border: '1px solid #2A2D3A',
+                    color: '#9CA3AF', cursor: 'pointer', fontSize: '0.82rem',
+                  }}
+                >
+                  Close
+                </button>
+                <a
+                  href={selectedArticle.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    padding: '8px 18px', borderRadius: 8,
+                    background: 'linear-gradient(135deg, #10B981, #059669)',
+                    color: '#fff', fontWeight: 700,
+                    fontSize: '0.82rem', textDecoration: 'none',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  Open Original Article ↗
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {newsOpen && (
         <div style={{
           background: '#1A1D27',
@@ -448,12 +580,12 @@ const Dashboard = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '1.1rem' }}>📰</span>
               <div>
-                <div style={{ fontWeight: 700, color: '#F8F9FA',
-                  fontSize: '0.9rem' }}>
+                <div style={{ fontWeight: 700, color: '#F8F9FA', fontSize: '0.9rem' }}>
                   Latest Health News
                 </div>
-                <div style={{ color: '#9CA3AF', fontSize: '0.72rem' }}>
-                  Real-time from NDTV, TOI, WHO, The Hindu
+                <div style={{ color: '#9CA3AF', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  Powered by Tavily AI
+                  <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981', fontSize: '0.62rem', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>LIVE</span>
                 </div>
               </div>
             </div>
@@ -476,68 +608,101 @@ const Dashboard = () => {
                 borderTop: '2px solid #10B981',
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite' }} />
-              Loading latest health news...
+              Fetching latest health news…
             </div>
           ) : (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
               gap: 0
             }}>
-              {healthNews.slice(0, 6).map((item, i) => (
-                <div key={i} style={{
-                  padding: '14px 18px',
-                  borderBottom: i < 5 ? '1px solid #2A2D3A' : 'none',
-                  borderRight: i % 2 === 0 ? '1px solid #2A2D3A' : 'none',
-                  transition: 'background 0.15s'
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <div style={{
-                    display: 'flex', gap: 8,
-                    alignItems: 'flex-start', marginBottom: 6
-                  }}>
-                    <span style={{
-                      background: 'rgba(16,185,129,0.1)',
-                      color: '#10B981', fontSize: '0.62rem',
-                      padding: '2px 6px', borderRadius: 4,
-                      fontWeight: 600, flexShrink: 0,
-                      marginTop: 2
-                    }}>
-                      {item.source?.split(' ')[0]}
-                    </span>
-                    {item.link ? (
-                      <a href={item.link} target="_blank" rel="noopener noreferrer"
-                        style={{ color: '#F8F9FA', fontWeight: 600,
-                          fontSize: '0.82rem', lineHeight: 1.4,
-                          textDecoration: 'none',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden'
-                        }}>
-                        {item.title}
-                      </a>
-                    ) : (
-                      <span style={{ color: '#F8F9FA', fontWeight: 600,
-                        fontSize: '0.82rem', lineHeight: 1.4 }}>
-                        {item.title}
+              {healthNews.map((item, i) => {
+                const catMeta = {
+                  medical:  { label: '🏥 Medical',  color: '#60A5FA', bg: 'rgba(96,165,250,0.12)' },
+                  wellness: { label: '🥗 Wellness', color: '#34D399', bg: 'rgba(52,211,153,0.12)' },
+                  research: { label: '🔬 Research', color: '#A78BFA', bg: 'rgba(167,139,250,0.12)' },
+                }[item.category] || { label: '📰 Health', color: '#10B981', bg: 'rgba(16,185,129,0.12)' };
+
+                return (
+                  <div key={i} style={{
+                    padding: '16px 18px',
+                    borderBottom: i < healthNews.length - 1 ? '1px solid #2A2D3A' : 'none',
+                    borderRight: i % 2 === 0 ? '1px solid #2A2D3A' : 'none',
+                    display: 'flex', flexDirection: 'column', gap: 8,
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    {/* Category + source + date */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{
+                        background: catMeta.bg, color: catMeta.color,
+                        fontSize: '0.60rem', padding: '2px 7px',
+                        borderRadius: 4, fontWeight: 700, flexShrink: 0
+                      }}>
+                        {catMeta.label}
                       </span>
-                    )}
-                  </div>
-                  {item.description && (
-                    <p style={{ color: '#9CA3AF', fontSize: '0.75rem',
-                      lineHeight: 1.5, margin: 0,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden' }}>
-                      {item.description}
+                      <span style={{
+                        background: 'rgba(255,255,255,0.06)', color: '#9CA3AF',
+                        fontSize: '0.60rem', padding: '2px 6px',
+                        borderRadius: 4, flexShrink: 0
+                      }}>
+                        {item.source}
+                      </span>
+                      {item.published && (
+                        <span style={{ color: '#6B7280', fontSize: '0.60rem', marginLeft: 'auto' }}>
+                          {new Date(item.published).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Title */}
+                    <p style={{
+                      color: '#F8F9FA', fontWeight: 600, fontSize: '0.84rem',
+                      lineHeight: 1.45, margin: 0,
+                      display: '-webkit-box', WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical', overflow: 'hidden'
+                    }}>
+                      {item.title}
                     </p>
-                  )}
-                </div>
-              ))}
+
+                    {/* Description preview */}
+                    {item.description && (
+                      <p style={{
+                        color: '#9CA3AF', fontSize: '0.75rem',
+                        lineHeight: 1.55, margin: 0,
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden'
+                      }}>
+                        {item.description}
+                      </p>
+                    )}
+
+                    {/* Read Article button */}
+                    <button
+                      onClick={() => setSelectedArticle(item)}
+                      style={{
+                        alignSelf: 'flex-start',
+                        marginTop: 2,
+                        padding: '5px 12px',
+                        borderRadius: 6,
+                        background: 'rgba(16,185,129,0.1)',
+                        border: '1px solid rgba(16,185,129,0.25)',
+                        color: '#10B981',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.2)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.5)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.25)'; }}
+                    >
+                      Read Article →
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

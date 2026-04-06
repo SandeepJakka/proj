@@ -883,26 +883,10 @@ const Reminders = () => {
             <Camera size={16} />
             {scanning ? t('rem_scanning') : t('rem_scan')}
           </button>
-          <button
-            onClick={() => {
-              setPriceOpen(true)
-              setPriceResult(null)
-              setPriceInput('')
-            }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: 'clamp(8px, 2vw, 10px) clamp(12px, 3vw, 18px)',
-              borderRadius: 10,
-              border: '1.5px solid rgba(245,158,11,0.4)',
-              background: 'rgba(245,158,11,0.08)',
-              color: '#F59E0B', cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: 'clamp(0.75rem, 2.5vw, 0.85rem)',
-              transition: 'all 0.2s'
-            }}
-          >
-            💰 Price Check
-          </button>
+          {/* Price Check temporarily removed for accuracy improvements */}
+          
+          {/* Drug Interactions hidden temporarily per safety requirements */}
+          {/*
           <button
             onClick={() => {
               setInteractionOpen(true)
@@ -926,6 +910,7 @@ const Reminders = () => {
           >
             ⚠️ Check Interactions
           </button>
+          */}
           <button
             onClick={() => setShowForm(true)}
             style={{

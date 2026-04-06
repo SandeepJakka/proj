@@ -83,6 +83,8 @@ app.include_router(insurance.router)
 from app.api import family
 app.include_router(family.router)
 app.include_router(news.router)
+from app.api import rag
+app.include_router(rag.router)
 
 # ── Health check ─────────────────────────────────────────────────────────────
 @app.get("/")

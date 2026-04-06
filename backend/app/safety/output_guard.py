@@ -133,8 +133,8 @@ class OutputSafetyGuard:
         context_lower = user_context.lower()
         
         # 1. EMERGENCY DETECTION (highest priority)
-        if not allow_emergencies:
-            emergency_detected = self._check_emergency(text_lower)
+        if not allow_emergencies and context_lower:
+            emergency_detected = self._check_emergency(context_lower)
             if emergency_detected:
                 return {
                     "safe": False,

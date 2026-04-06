@@ -1,14 +1,28 @@
 import re
 
-NON_HEALTH_PATTERNS = [
-    r"\b(stock|crypto|bitcoin|politics|movie|song|code|programming)\b",
-    r"\b(diagnose|diagnosis|dosage|how much medicine)\b",
-    r"\b(emergency|call ambulance|urgent help)\b"
-]
+def is_health_related(query: str) -> bool:
+    query = query.lower()
+    medical_keywords = [
+        # general
+        "health", "disease", "symptom", "treatment", "medicine", "drug",
+        "diagnosis", "report", "test", "lab", "result",
+        
+        # body & conditions
+        "pain", "fever", "infection", "diabetes", "bp", "blood", "heart",
+        "liver", "kidney", "glucose", "cholesterol",
+        
+        # prescriptions
+        "prescription", "tablet", "dosage", "medicine", "drug",
+        
+        # insurance
+        "insurance", "claim", "coverage", "policy", "hospital",
+        
+        # actions
+        "should i", "is it normal", "what does", "how to treat",
+        
+        # greetings & meta
+        "hi", "hello", "hey", "help", "who are you", "what can you", "how are you",
+        "vaidya", "assist", "healthora", "telugu","tired","sleep"
+    ]
 
-def is_health_related(text: str) -> bool:
-    text = text.lower()
-    for pattern in NON_HEALTH_PATTERNS:
-        if re.search(pattern, text):
-            return False
-    return True
+    return any(keyword in query for keyword in medical_keywords)

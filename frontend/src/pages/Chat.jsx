@@ -7,7 +7,7 @@ import { guestChat, sendMessage as apiSend, getChatHistory, clearChatHistory, an
 import { Send, Bot, User, Plus, Paperclip, Trash2, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
-const WELCOME = 'Hello! I am **Healthora AI**, your personal health assistant. Ask me anything about health, symptoms, diet, or your medical reports.\n\nI can respond in **English or Telugu** 🇮🇳';
+const WELCOME = 'Hello! I am **Vaidya Assist AI**, your personal health assistant. Ask me anything about health, symptoms, diet, or your medical reports.\n\nI can respond in **English or Telugu** 🇮🇳';
 
 const isLoggedIn = () => !!localStorage.getItem('access_token');
 
@@ -21,6 +21,7 @@ const Chat = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [hoveredSessionId, setHoveredSessionId] = useState(null);
+  const [lastDocId, setLastDocId] = useState(null);
 
   const [appointmentMode, setAppointmentMode] = useState(false)
   const [appointmentSymptoms, setAppointmentSymptoms] = useState('')
@@ -88,6 +89,7 @@ const Chat = () => {
   const startNewChat = () => {
     setSessionId(uuidv4());
     setMessages([{ role: 'assistant', content: WELCOME }]);
+    setLastDocId(null);
   };
 
   const handleClearHistory = async () => {
@@ -129,7 +131,7 @@ const Chat = () => {
     try {
       let res;
       if (isLoggedIn()) {
-        res = await apiSend(text, language, sessionId);
+        res = await apiSend(text, language, sessionId, lastDocId);
         if (res.data.session_id) setSessionId(res.data.session_id);
         loadSessions();
       } else {
@@ -143,7 +145,9 @@ const Chat = () => {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: res.data.response,
-        isMedical: res.data.is_medical
+        isMedical: res.data.is_medical,
+        documentType: res.data.document_type,
+        sourceDetail: res.data.source_detail
       }]);
     } catch (err) {
       toast.error('Failed to get a response. Please try again.');
@@ -221,6 +225,7 @@ const Chat = () => {
       }
 
       const data = res.data;
+      if (data.doc_id) setLastDocId(data.doc_id);
       const explanation = data.explanation
         || data.gemini_extraction?.raw_findings
         || 'Could not analyze this file.';
@@ -228,7 +233,9 @@ const Chat = () => {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: explanation,
-        isMedical: true
+        isMedical: true,
+        documentType: data.document_type,
+        sourceDetail: data.source_detail
       }]);
       toast.success('Report analyzed', { id: uploadToast });
     } catch (err) {
@@ -403,7 +410,7 @@ const Chat = () => {
               <Bot size={18} />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Healthora AI</div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Vaidya Assist AI</div>
               <div style={{ fontSize: '0.7rem', color: '#10B981', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span className="status-dot" />
                 {loading ? 'Thinking…' : 'Online'}
@@ -976,7 +983,7 @@ const Chat = () => {
           {messages.length <= 1 && !loading && (
             <div className="empty-state" style={{ flex: 1, justifyContent: 'center' }}>
               <div className="empty-state-icon">🤖</div>
-              <h3>Welcome to Healthora AI</h3>
+              <h3>Welcome to Vaidya Assist AI</h3>
               <p>Ask anything about your health, symptoms, or upload a report for a quick breakdown.</p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
                 {[
@@ -1027,8 +1034,20 @@ const Chat = () => {
                 {msg.role === 'assistant' ? (
                   <div className="markdown-content">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    {msg.isMedical && (
-                      <div style={{ marginTop: 8, fontSize: '0.7rem', color: '#6B7280', borderTop: '1px solid #2A2D3A', paddingTop: 6 }}>
+                    {msg.documentType && (
+                      <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {msg.documentType === 'report' && <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(37,99,235,0.15)', color: '#60A5FA', fontSize: '0.65rem', fontWeight: 600 }}>🏥 Report</span>}
+                        {msg.documentType === 'insurance' && <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: '0.65rem', fontWeight: 600 }}>📑 Insurance</span>}
+                        {msg.documentType === 'general' && <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(16,185,129,0.15)', color: '#10B981', fontSize: '0.65rem', fontWeight: 600 }}>🧠 General</span>}
+                      </div>
+                    )}
+                    {msg.sourceDetail && (
+                      <div style={{ marginTop: 4, fontSize: '0.65rem', color: '#6B7280' }}>
+                        {msg.sourceDetail}
+                      </div>
+                    )}
+                    {(msg.isMedical || msg.documentType) && (
+                      <div style={{ marginTop: 8, fontSize: '0.7rem', color: '#4B5563', borderTop: '1px solid #2A2D3A', paddingTop: 6, opacity: 0.8 }}>
                         ⚕️ Medical Insight • Always consult a qualified doctor
                       </div>
                     )}
@@ -1096,7 +1115,7 @@ const Chat = () => {
               </button>
             </form>
             <div style={{ fontSize: '0.68rem', color: '#6B7280', textAlign: 'center', marginTop: 6 }}>
-              Healthora is for informational purposes only — not a substitute for medical advice
+              Vaidya Assist is for informational purposes only — not a substitute for medical advice
             </div>
           </div>
         )}

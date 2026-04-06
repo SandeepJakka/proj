@@ -33,3 +33,20 @@ def get_user_me(current_user: User = Depends(get_current_user)):
         "is_verified": current_user.is_verified,
         "created_at": current_user.created_at.isoformat() if current_user.created_at else None
     }
+
+from pydantic import BaseModel
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+
+@router.put("/me")
+def update_user_me(data: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update current user's profile info (e.g. full name)."""
+    if data.full_name is not None:
+        current_user.full_name = data.full_name
+    db.commit()
+    db.refresh(current_user)
+    return {
+        "id": current_user.id,
+        "full_name": current_user.full_name,
+        "email": current_user.email
+    }

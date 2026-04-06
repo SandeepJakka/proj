@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getProfile, updateProfile, getProfileSharing, updateProfileSharing, getCurrentUser } from '../services/api';
+import { getProfile, updateProfile, getProfileSharing, updateProfileSharing, getCurrentUser, updateCurrentUser } from '../services/api';
 import { User, ShieldCheck, Activity, Save, Loader, Link2, Copy, Eye, EyeOff } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -43,6 +43,7 @@ const Profile = () => {
     const [sharingLoaded, setSharingLoaded] = useState(false);
     const [savingSharing, setSavingSharing] = useState(false);
     const [userEmail, setUserEmail] = useState('');
+    const [userName, setUserName] = useState('');
     const [cardView, setCardView] = useState(false);
 
     useEffect(() => {
@@ -67,7 +68,10 @@ const Profile = () => {
         fetchProfile();
 
         getCurrentUser()
-            .then(r => setUserEmail(r.data?.email || ''))
+            .then(r => {
+                setUserEmail(r.data?.email || '');
+                setUserName(r.data?.full_name || '');
+            })
             .catch(() => { });
 
         getProfileSharing()
@@ -93,7 +97,10 @@ const Profile = () => {
         e.preventDefault();
         setSaving(true);
         try {
-            await updateProfile(profile);
+            await Promise.all([
+                updateProfile(profile),
+                updateCurrentUser({ full_name: userName })
+            ]);
             toast.success("Profile saved successfully!");
         } catch (err) {
             toast.error("Failed to save profile. Please try again.");
@@ -175,6 +182,15 @@ const Profile = () => {
                                 <span style={{ fontSize: '0.72rem', color: '#6B7280' }}>
                                     Email cannot be changed
                                 </span>
+                            </div>
+                            <div className="input-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Full Name</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. Sandeep Jakka" 
+                                    value={userName} 
+                                    onChange={e => setUserName(e.target.value)} 
+                                />
                             </div>
                             <div className="input-field">
                                 <label>Age</label>
@@ -261,7 +277,7 @@ const Profile = () => {
                                 />
                                 {sharing.username && (
                                     <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>
-                                        Your profile link: healthora.app/profile/{sharing.username}
+                                        Your profile link: vaidya-assist.app/profile/{sharing.username}
                                     </span>
                                 )}
                             </div>
@@ -368,7 +384,7 @@ const Profile = () => {
                                     justifyContent: 'space-between', gap: 8
                                 }}>
                                     <span style={{ color: '#10B981', fontSize: '0.8rem', fontWeight: 500 }}>
-                                        healthora.app/profile/{sharing.username}
+                                        vaidya-assist.app/profile/{sharing.username}
                                     </span>
                                     <button
                                         type="button"
@@ -581,14 +597,12 @@ const Profile = () => {
                                                 color: '#F8F9FA', fontWeight: 700,
                                                 fontSize: '1.3rem', lineHeight: 1.2
                                             }}>
-                                                {profile.emergency_contact_name
-                                                    ? (profile.emergency_contact_name.split('(')[0] || profile.emergency_contact_name)
-                                                    : 'Your Name Here'}
+                                                {userName || 'Your Name Here'}
                                             </div>
                                             <div style={{
                                                 color: '#9CA3AF', fontSize: '0.78rem'
                                             }}>
-                                                Powered by Healthora
+                                                Powered by Vaidya Assist
                                             </div>
                                         </div>
                                         {/* Blood type badge */}
@@ -823,12 +837,12 @@ const Profile = () => {
                                         <div style={{
                                             color: '#6B7280', fontSize: '0.65rem'
                                         }}>
-                                            🔒 Generated by Healthora
+                                            🔒 Generated by Vaidya Assist
                                         </div>
                                         <div style={{
                                             color: '#6B7280', fontSize: '0.65rem'
                                         }}>
-                                            healthora.app
+                                            vaidya-assist.app
                                         </div>
                                     </div>
                                 </div>
@@ -847,7 +861,7 @@ const Profile = () => {
                                             printWindow.document.write(`
                                                 <html>
                                                 <head>
-                                                    <title>Emergency Medical Card - Healthora</title>
+                                                    <title>Emergency Medical Card - Vaidya Assist</title>
                                                     <style>
                                                         * { margin: 0; padding: 0; box-sizing: border-box; }
                                                         body {
@@ -897,7 +911,7 @@ const Profile = () => {
                                                     useCORS: true
                                                 })
                                                 const link = document.createElement('a')
-                                                link.download = 'healthora-emergency-card.png'
+                                                link.download = 'vaidya-assist-emergency-card.png'
                                                 link.href = canvas.toDataURL('image/png')
                                                 link.click()
                                                 toast.success('Card downloaded!')

@@ -11,6 +11,9 @@ from app.safety.disclaimers import medical_disclaimer
 from app.safety.output_guard import get_safety_guard, SafetyAction
 from app.services.llm_service import get_health_response
 from app.utils.intent_detector import detect_language
+from app.services.rag.rag_service import RAGService
+
+rag_service = RAGService()
 
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
@@ -23,11 +26,13 @@ class GuestChatRequest(BaseModel):
     messages: list[ChatMessagePayload]
     language: str = "english"
     guest_session_id: str | None = None
+    doc_id: str | None = None
 
 class ChatRequest(BaseModel):
     message: str
     language: str = "english"
     session_id: str | None = None
+    doc_id: str | None = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -35,6 +40,10 @@ class ChatResponse(BaseModel):
     language: str = "english"
     is_medical: bool = False
     is_guest: bool = False
+    source: str = "llm"
+    confidence: float = 1.0
+    document_type: str | None = None
+    source_detail: str | None = None
     
 class ChatSessionResponse(BaseModel):
     session_id: str
@@ -52,7 +61,7 @@ async def chat_guest(req: GuestChatRequest):
         raise HTTPException(status_code=400, detail="Empty messages.")
 
     last_user_msg = req.messages[-1].content
-    if not is_health_related(last_user_msg):
+    if not req.doc_id and not is_health_related(last_user_msg):
         raise HTTPException(
             status_code=400,
             detail="This assistant only answers health, diet, exercise, and wellness related questions."
@@ -63,34 +72,70 @@ async def chat_guest(req: GuestChatRequest):
 
     detected_lang = detect_language(last_user_msg) if req.language == "english" else req.language
 
-    reply = await get_health_response(
-        messages=llm_messages, 
-        user_context=None, 
-        language=detected_lang
-    )
+    source = "llm"
+    confidence = 1.0
+
+    if req.doc_id:
+        result = rag_service.answer(req.doc_id, last_user_msg)
+        if result["confidence"] >= 0.5:
+            reply = result["answer"]
+            source = "rag"
+            confidence = result["confidence"]
+        else:
+            # Fallback
+            reply = await get_health_response(
+                messages=llm_messages,
+                user_context=None,
+                language=detected_lang
+            )
+            source = "fallback_llm"
+    else:
+        reply = await get_health_response(
+            messages=llm_messages,
+            user_context=None,
+            language=detected_lang
+        )
 
     # Safety Validate
     safety_guard = get_safety_guard()
     safety_result = safety_guard.validate(text=reply, user_context=last_user_msg)
 
+    is_medical = is_health_related(last_user_msg) or (True if req.doc_id else False)
     if safety_result["action"] == SafetyAction.EMERGENCY_REDIRECT:
         final_response = safety_result["sanitized_text"]
         is_medical = True
     elif safety_result["action"] == SafetyAction.SANITIZE:
         final_response = safety_result["sanitized_text"] + medical_disclaimer(detected_lang)
-        is_medical = False
     else:
         final_response = reply + medical_disclaimer(detected_lang)
-        is_medical = False
 
     session_id = req.guest_session_id or str(uuid.uuid4())
+
+    # detect document type
+    document_type = None
+    source_detail = None
+    
+    if req.doc_id:
+        if "insurance" in req.doc_id.lower():
+            document_type = "insurance"
+            source_detail = "Answer derived from uploaded insurance policy"
+        else:
+            document_type = "report"
+            source_detail = "Answer derived from uploaded medical report"
+    else:
+        document_type = "general"
+        source_detail = "Answer generated from general medical knowledge"
 
     return {
         "response": final_response,
         "session_id": session_id,
         "language": detected_lang,
         "is_medical": is_medical,
-        "is_guest": True
+        "is_guest": True,
+        "source": source,
+        "confidence": confidence,
+        "document_type": document_type,
+        "source_detail": source_detail
     }
 
 
@@ -108,15 +153,17 @@ async def chat_logged_in(req: ChatRequest, db: Session = Depends(get_db), curren
 
     if not req.message or not req.message.strip():
         return {
-            "response": "Empty message",
+            "response": "Please enter a message.",
             "session_id": session_id,
+            "is_medical": False,
+            "source": "system"
         }
 
-    if not is_health_related(req.message):
-        raise HTTPException(
-            status_code=400,
-            detail="This assistant only answers health, diet, exercise, and wellness related questions."
-        )
+    # if not req.doc_id and not is_health_related(req.message):
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail="This assistant only answers health, diet, exercise, and wellness related questions."
+    #     )
 
     crud.save_message(db, session_id, current_user.id, "user", req.message)
     detected_lang = detect_language(req.message) if req.language == "english" else req.language
@@ -139,16 +186,34 @@ async def chat_logged_in(req: ChatRequest, db: Session = Depends(get_db), curren
     if lab_summary:
         user_context["Latest_Labs"] = lab_summary
 
-    reply = await get_health_response(
-        messages=llm_messages,
-        user_context=user_context,
-        language=detected_lang
-    )
+    source = "llm"
+    confidence = 1.0
+
+    if req.doc_id:
+        result = rag_service.answer(req.doc_id, req.message)
+        if result["confidence"] >= 0.5:
+            reply = result["answer"]
+            source = "rag"
+            confidence = result["confidence"]
+        else:
+            # Fallback
+            reply = await get_health_response(
+                messages=llm_messages,
+                user_context=user_context,
+                language=detected_lang
+            )
+            source = "fallback_llm"
+    else:
+        reply = await get_health_response(
+            messages=llm_messages,
+            user_context=user_context,
+            language=detected_lang
+        )
 
     safety_guard = get_safety_guard()
     safety_result = safety_guard.validate(text=reply, user_context=req.message)
 
-    is_medical = False
+    is_medical = is_health_related(req.message) or (True if req.doc_id else False)
     if safety_result["action"] == SafetyAction.EMERGENCY_REDIRECT:
         final_response = safety_result["sanitized_text"]
         is_medical = True
@@ -159,11 +224,30 @@ async def chat_logged_in(req: ChatRequest, db: Session = Depends(get_db), curren
 
     crud.save_message(db, session_id, current_user.id, "assistant", final_response)
 
+    # detect document type
+    document_type = None
+    source_detail = None
+    
+    if req.doc_id:
+        if "insurance" in req.doc_id.lower():
+            document_type = "insurance"
+            source_detail = "Answer derived from uploaded insurance policy"
+        else:
+            document_type = "report"
+            source_detail = "Answer derived from uploaded medical report"
+    else:
+        document_type = "general"
+        source_detail = "Answer generated from general medical knowledge"
+
     return {
         "response": final_response,
         "session_id": session_id,
         "language": detected_lang,
-        "is_medical": is_medical
+        "is_medical": is_medical,
+        "source": source,
+        "confidence": confidence,
+        "document_type": document_type,
+        "source_detail": source_detail
     }
 
 

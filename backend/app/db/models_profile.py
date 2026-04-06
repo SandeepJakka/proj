@@ -25,5 +25,17 @@ class HealthProfile(Base):
     known_conditions = Column(Text, nullable=True) # e.g., "Asthma, Hypertension"
     allergies = Column(Text, nullable=True)
     
+    # Emergency Contact
+    emergency_contact_name = Column(String, nullable=True)
+    emergency_contact_phone = Column(String, nullable=True)
+    emergency_contact_relation = Column(String, nullable=True)
+    
+    # Medical Providers
+    primary_doctor_name = Column(String, nullable=True)
+    primary_doctor_phone = Column(String, nullable=True)
+    
+    # Medications
+    current_medicines = Column(Text, nullable=True)
+    
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())

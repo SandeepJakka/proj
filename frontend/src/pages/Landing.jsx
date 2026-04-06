@@ -59,7 +59,7 @@ const Landing = () => {
             <nav className="navbar">
                 <div className="navbar-left">
                     <div className="logo-icon">H</div>
-                    <span className="logo-text" style={{ fontSize: '1.3rem', fontWeight: 800 }}>Healthora</span>
+                    <span className="logo-text" style={{ fontSize: '1.3rem', fontWeight: 800 }}>Vaidya Assist</span>
                 </div>
                 <div className="navbar-right">
                     <div className="lang-toggle">
@@ -169,7 +169,7 @@ const Landing = () => {
 
             {/* Footer */}
             <footer style={{ textAlign: 'center', padding: '24px', borderTop: '1px solid #2A2D3A', color: '#6B7280', fontSize: '0.8rem' }}>
-                Healthora © 2025 • Not a substitute for professional medical advice
+                Vaidya Assist © 2025 • Not a substitute for professional medical advice
             </footer>
         </div>
     );

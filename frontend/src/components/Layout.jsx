@@ -120,7 +120,7 @@ const Layout = ({ children, showSidebar = true }) => {
                 <span style={{
                   fontWeight: 700, fontSize: '1rem', color: '#F8F9FA'
                 }}>
-                  Healthora
+                  Vaidya Assist
                 </span>
               </Link>
             )}

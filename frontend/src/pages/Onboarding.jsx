@@ -106,7 +106,7 @@ const Onboarding = () => {
       const chosen = FIRST_ACTION_OPTIONS.find(o => o.value === firstAction);
       const destination = chosen?.path || '/dashboard';
 
-      toast.success('Welcome to Healthora! 🎉');
+      toast.success('Welcome to Vaidya Assist! 🎉');
       navigate(destination, { replace: true });
     } catch (err) {
       toast.error('Could not save profile. You can update it later in Profile settings.');
@@ -406,7 +406,7 @@ const Onboarding = () => {
             fontWeight: 800, color: '#fff', fontSize: 22,
           }}>H</div>
           <div style={{ fontWeight: 800, fontSize: '1.25rem', color: '#F8F9FA' }}>
-            Healthora
+            Vaidya Assist
           </div>
         </div>
 

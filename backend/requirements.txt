@@ -34,6 +34,10 @@ pydantic[email]           # Pydantic with email validator
 groq                      # Groq API client (replaces local LLM)
 google-genai              # Gemini API (new SDK)
 huggingface_hub           # HuggingFace model hub
+tavily-python             # Tavily Search API for real-time news
+
+# ── NLP / String Matching ──────────────────────────────────────────────────────
+rapidfuzz                 # Fast fuzzy string matching for medicine name verification
 
 # ── Medical / NLP ──────────────────────────────────────────────────────────────
 spacy

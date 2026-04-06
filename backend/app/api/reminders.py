@@ -124,11 +124,13 @@ async def scan_prescription(
 ):
     """
     Accept prescription image.
-    Use Groq vision to extract medicines.
-    Returns list of detected medicines for frontend wizard.
+    Use Groq vision to extract medicines, then verify & correct each
+    medicine name through the verification service (fuzzy match + OpenFDA).
+    Returns list of detected + verified medicines for frontend wizard.
     """
     from app.services.vision_service import analyze_prescription_image
     from app.utils.file_handler import validate_upload_file
+    from app.services.medicine_verification_service import verify_medicines_batch
 
     # Validate file
     file_bytes = await validate_upload_file(file)
@@ -145,10 +147,56 @@ async def scan_prescription(
             )
         )
 
+    raw_medicines = result.get("medicines", [])
+
+    # ── Verify & correct each extracted medicine name ──────────────────────
+    if raw_medicines:
+        raw_names = [m.get("name", "") for m in raw_medicines if m.get("name")]
+        verification_results = await verify_medicines_batch(raw_names)
+
+        # Build lookup: original OCR name (lowercase) → verification dict
+        verification_map = {
+            vr["input_name"].lower(): vr
+            for vr in verification_results
+        }
+
+        verified_medicines = []
+        for med in raw_medicines:
+            raw_name = med.get("name", "")
+            vr = verification_map.get(raw_name.lower())
+
+            enriched = dict(med)  # preserve dosage, instructions, duration
+            if vr:
+                if vr["verified"]:
+                    enriched["name"] = vr["corrected_name"]       # use corrected
+                    enriched["original_name"] = raw_name           # keep OCR original
+                enriched["verification"] = {
+                    "original_name":       vr["original_name"],
+                    "corrected_name":      vr["corrected_name"],
+                    "verified":            vr["verified"],
+                    "verification_status": vr["verification_status"],
+                    "confidence":          vr["confidence"],
+                    "similarity_score":    vr["similarity_score"],
+                    "confidence_reason":   vr["confidence_reason"],
+                    "source":              vr["source"],
+                    "standardized":        vr["standardized"],
+                }
+                if vr.get("uses"):
+                    enriched.setdefault("uses", vr["uses"])
+                if vr.get("warnings"):
+                    enriched.setdefault("warnings", vr["warnings"])
+            verified_medicines.append(enriched)
+    else:
+        verified_medicines = []
+
     return {
-        "medicines": result.get("medicines", []),
-        "raw_text": result.get("raw_text", ""),
+        "medicines":         verified_medicines,
+        "raw_text":          result.get("raw_text", ""),
         "prescription_date": result.get("date"),
-        "doctor_name": result.get("doctor_name"),
-        "count": len(result.get("medicines", []))
+        "doctor_name":       result.get("doctor_name"),
+        "count":             len(verified_medicines),
+        "verified_count":    sum(
+            1 for m in verified_medicines
+            if m.get("verification", {}).get("verified", False)
+        ),
     }

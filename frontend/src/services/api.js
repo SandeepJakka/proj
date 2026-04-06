@@ -65,13 +65,14 @@ export const logoutUser = () => api.post('/auth/logout');
 
 // ── User ──────────────────────────────────────────────────────────────────────
 export const getCurrentUser = () => api.get('/users/me');
+export const updateCurrentUser = (data) => api.put('/users/me', data);
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 export const guestChat = (messages, language = 'english') =>
   api.post('/chat/guest', { messages, language });
 
-export const sendMessage = (message, language = 'english', sessionId = null) =>
-  api.post('/chat/', { message, language, session_id: sessionId });
+export const sendMessage = (message, language = 'english', sessionId = null, docId = null) =>
+  api.post('/chat/', { message, language, session_id: sessionId, doc_id: docId });
 
 export const getChatHistory = (sessionId) =>
   api.get('/chat/history', { params: sessionId ? { session_id: sessionId } : {} });

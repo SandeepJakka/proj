@@ -5,7 +5,7 @@ load_dotenv()
 
 class Settings:
     # ── App metadata ──────────────────────────────────────────────────────
-    APP_NAME: str = os.getenv("APP_NAME", "Healthora")
+    APP_NAME: str = os.getenv("APP_NAME", "Vaidya Assist")
     ENV: str      = os.getenv("ENV", "development")
 
     # ── Database ──────────────────────────────────────────────────────────

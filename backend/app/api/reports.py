@@ -1,8 +1,12 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import json
+import re
 import os
+import uuid
+import logging
+from app.services.rag.rag_service import RAGService
 
 from app.db.deps import get_db, get_current_user
 from app.db import crud, models
@@ -11,8 +15,42 @@ from app.services.report_analyzer import analyze_report
 from app.services.analytics_service import analyze_health_trends
 from app.safety.disclaimers import medical_disclaimer
 from app.utils.intent_detector import detect_language
+from app.config import settings
+from groq import Groq
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
+rag_service = RAGService()
+_groq = Groq(api_key=settings.GROQ_API_KEY)
+logger = logging.getLogger(__name__)
+
+def _extract_json(text: str) -> dict:
+    """Robustly extract a JSON object from an LLM response string."""
+    text = re.sub(r'```(?:json)?', '', text).strip().rstrip('`').strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+def _groq_json_call(system_prompt: str, user_prompt: str, language: str = 'english', max_tokens: int = 2500) -> dict:
+    """Call Groq with a system+user prompt and return parsed JSON."""
+    model = settings.GROQ_MULTILINGUAL_MODEL if language.lower() == 'telugu' else settings.GROQ_MODEL
+    resp = _groq.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=max_tokens,
+        temperature=0.3,
+    )
+    return _extract_json(resp.choices[0].message.content)
 
 @router.get("/")
 def get_reports(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -117,11 +155,20 @@ async def analyze_report_logged_in(
     report_type = normalize_report_type(document_type)
     
     # Step 2: Save to DB since it's a logged in user
+    doc_id = f"report_{uuid.uuid4()}"
     report = crud.create_report(db, file.filename, ext, user_id=current_user.id)
     report.s3_key = s3_key
     report.report_type = report_type
     report.local_path = local_path
+    report.doc_id = doc_id
     db.commit()
+
+    # Step 3: Load into RAG
+    try:
+        rag_service.load_document(doc_id, local_path)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"RAG Load Error: {e}")
     
     # Store extraction results
     crud.create_report_extract(
@@ -142,6 +189,7 @@ async def analyze_report_logged_in(
     
     # Add our report_id to the response
     result["report_id"] = report.id
+    result["doc_id"] = doc_id
     result["s3_key"] = s3_key
     result["report_type"] = report_type
     
@@ -150,7 +198,17 @@ async def analyze_report_logged_in(
         result["previous_report_id"] = previous_report.id
         result["suggestion"] = f"You have a previous {report_type.replace('_', ' ')}. Would you like to compare?"
     
-    return result
+    return {
+        "success": True,
+        "message": "Report analyzed and stored successfully",
+        "report_id": report.id,
+        "doc_id": doc_id,
+        "filename": file.filename,
+        "report_type": report_type,
+        "document_type": "report",
+        "source_detail": "Medical report uploaded and indexed for intelligent querying",
+        "explanation": result["explanation"]
+    }
 
 # ── KEEPING EXISTING ENDPOINTS TO PREVENT BREAKING CHANGES ──
 
@@ -386,7 +444,7 @@ def get_reports_by_type(report_type: str, db: Session = Depends(get_db), current
 @router.post("/{report_id}/second-opinion")
 async def get_second_opinion(
     report_id: int,
-    language: str = "english",
+    language: str = Query(default="english"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -394,8 +452,6 @@ async def get_second_opinion(
     AI second opinion on a medical report.
     Gives independent analysis with AP/India context.
     """
-    from app.services.llm_service import medical_llm_response
-
     report = db.query(models.Report).filter(
         models.Report.id == report_id,
         models.Report.user_id == current_user.id
@@ -413,97 +469,42 @@ async def get_second_opinion(
     profile = crud.get_health_profile(db, current_user.id)
     profile_ctx = ""
     if profile:
-        profile_ctx = f"""
-Patient: {profile.age}yo {profile.gender}
-Conditions: {profile.known_conditions or 'None'}
-Allergies: {profile.allergies or 'None'}
-Blood Type: {profile.blood_type or 'Unknown'}
-"""
+        profile_ctx = f"Patient: {profile.age}yo {profile.gender}, Conditions: {profile.known_conditions or 'None'}, Blood Type: {profile.blood_type or 'Unknown'}\n"
 
-    system_prompt = """You are an experienced senior doctor in India
-providing a second opinion on a medical report.
+    system_prompt = """You are an experienced senior doctor in India providing a second opinion on a medical report.
 Be honest, thorough, and focused on patient benefit.
-
-Respond ONLY with valid JSON in this exact format:
+If language is Telugu, respond entirely in Telugu.
+Return ONLY valid JSON — no markdown fences, no extra text:
 {
-  "overall_assessment": "Your overall independent assessment in 2-3 sentences",
-  "agree_with": [
-    "Finding you agree with"
-  ],
-  "concerns": [
-    {
-      "finding": "Specific finding that needs attention",
-      "reason": "Why this is concerning",
-      "severity": "low|medium|high"
-    }
-  ],
-  "unusual_findings": [
-    "Anything unusual worth a second look"
-  ],
-  "questions_for_doctor": [
-    "Important question patient should ask their doctor"
-  ],
-  "additional_tests": [
-    "Additional test worth considering"
-  ],
-  "specialist_referral": {
-    "needed": true or false,
-    "specialist": "Type of specialist if needed",
-    "reason": "Why referral is recommended"
-  },
-  "lifestyle_advice": [
-    "Practical lifestyle advice based on findings"
-  ],
+  "overall_assessment": "2-3 sentence independent assessment",
+  "agree_with": ["finding"],
+  "concerns": [{"finding": "", "reason": "", "severity": "low|medium|high"}],
+  "unusual_findings": ["finding"],
+  "questions_for_doctor": ["question"],
+  "additional_tests": ["test"],
+  "specialist_referral": {"needed": false, "specialist": "", "reason": ""},
+  "lifestyle_advice": ["advice"],
   "confidence": "high|medium|low",
-  "summary": "One paragraph plain language summary for the patient"
-}
+  "summary": "Plain language patient summary"
+}"""
 
-Rules:
-- Be medically accurate but use simple language
-- Consider Indian dietary habits and lifestyle
-- Mention Aarogyasri or CGHS if cost is a concern
-- If language is telugu, respond in Telugu
-- Return ONLY JSON, no markdown"""
-
-    user_prompt = f"""{profile_ctx}
-Report: {report.filename}
-Report Type: {report.report_type or 'Medical Report'}
-
-Analysis Summary:
-{extract.summary_text}
-
-Provide an independent second opinion on this report.
-Language: {language}"""
+    user_prompt = f"""{profile_ctx}Report: {report.filename} ({report.report_type or 'Medical Report'})
+Analysis Summary:\n{extract.summary_text}\nLanguage: {language}"""
 
     try:
-        response = await medical_llm_response([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ])
-
-        text = response.strip()
-        if '```json' in text:
-            text = text.split('```json')[1].split('```')[0].strip()
-        elif '```' in text:
-            text = text.split('```')[1].split('```')[0].strip()
-
-        import json as json_mod
-        data = json_mod.loads(text)
+        data = _groq_json_call(system_prompt, user_prompt, language=language, max_tokens=2000)
+        if not data:
+            raise ValueError("Empty JSON returned")
         return {"success": True, "data": data, "report_id": report_id}
-
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Second opinion error: {e}")
-        return {
-            "success": False,
-            "error": "Could not generate second opinion. Please try again."
-        }
+        logger.error(f"Second opinion error: {e}")
+        return {"success": False, "error": "Could not generate second opinion. Please try again."}
 
 
 @router.post("/{report_id}/decode-discharge")
 async def decode_discharge_summary(
     report_id: int,
-    language: str = "english",
+    language: str = Query(default="english"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -511,8 +512,6 @@ async def decode_discharge_summary(
     Decode a hospital discharge summary into plain language.
     Focused on Indian hospitals and AP context.
     """
-    from app.services.llm_service import medical_llm_response
-
     report = db.query(models.Report).filter(
         models.Report.id == report_id,
         models.Report.user_id == current_user.id
@@ -527,80 +526,37 @@ async def decode_discharge_summary(
             detail="Report has no analysis yet. Please generate explanation first."
         )
 
-    system_prompt = """You are a patient-friendly medical interpreter
-in India helping patients understand their hospital discharge summary.
-Use very simple language that any person can understand.
-
-Respond ONLY with valid JSON in this exact format:
+    system_prompt = """You are a patient-friendly medical interpreter in India.
+Help the patient understand their hospital discharge summary in very simple language.
+If language is Telugu, respond entirely in Telugu.
+Return ONLY valid JSON — no markdown fences, no extra text:
 {
-  "what_happened": "Plain language explanation of what happened medically",
-  "diagnosis": "The main diagnosis/diagnoses in simple terms",
-  "procedures_done": [
-    "Procedure done during hospital stay in simple terms"
-  ],
-  "medicines": [
-    {
-      "name": "Medicine name",
-      "purpose": "Why you need this medicine in simple terms",
-      "how_to_take": "Dosage and timing instructions",
-      "duration": "How long to take it",
-      "important_note": "Any important warning or note"
-    }
-  ],
-  "followup": [
-    {
-      "what": "What follow-up is needed",
-      "when": "When to do it",
-      "where": "What type of doctor/facility"
-    }
-  ],
-  "warning_signs": [
-    "Warning sign that means go to hospital immediately"
-  ],
-  "activity_restrictions": [
-    "What activities to avoid and for how long"
-  ],
-  "diet_instructions": [
-    "Specific diet instruction"
-  ],
-  "wound_care": "Any wound or incision care instructions if applicable",
-  "emergency_number": "108",
-  "simple_summary": "2-3 sentence very simple summary a non-medical person can understand"
-}
+  "simple_summary": "2-3 sentence plain-language summary",
+  "what_happened": "Plain language explanation of what happened",
+  "diagnosis": "Main diagnosis in simple terms",
+  "procedures_done": ["procedure in simple terms"],
+  "medicines": [{
+    "name": "medicine name",
+    "purpose": "why this medicine",
+    "how_to_take": "dosage and timing",
+    "duration": "how long",
+    "important_note": "warning if any"
+  }],
+  "followup": [{"what": "", "when": "", "where": ""}],
+  "warning_signs": ["sign that means go to hospital immediately"],
+  "activity_restrictions": ["activity to avoid"],
+  "diet_instructions": ["diet instruction"],
+  "wound_care": "wound care instructions or null",
+  "emergency_number": "108"
+}"""
 
-Rules:
-- Explain every medical term in brackets after using it
-- Use Telugu words where helpful if language is telugu
-- Mention 108 ambulance for emergencies
-- Consider Indian home remedies that should be AVOIDED
-- Return ONLY JSON, no markdown"""
-
-    user_prompt = f"""Hospital Discharge Summary:
-{extract.summary_text}
-
-Decode this discharge summary into simple language.
-Language: {language}"""
+    user_prompt = f"""Hospital Discharge Summary:\n{extract.summary_text}\nDecode this into simple language. Language: {language}"""
 
     try:
-        response = await medical_llm_response([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ])
-
-        text = response.strip()
-        if '```json' in text:
-            text = text.split('```json')[1].split('```')[0].strip()
-        elif '```' in text:
-            text = text.split('```')[1].split('```')[0].strip()
-
-        import json as json_mod
-        data = json_mod.loads(text)
+        data = _groq_json_call(system_prompt, user_prompt, language=language, max_tokens=2500)
+        if not data:
+            raise ValueError("Empty JSON returned")
         return {"success": True, "data": data, "report_id": report_id}
-
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Discharge decode error: {e}")
-        return {
-            "success": False,
-            "error": "Could not decode discharge summary. Please try again."
-        }
+        logger.error(f"Discharge decode error: {e}")
+        return {"success": False, "error": "Could not decode discharge summary. Please try again."}

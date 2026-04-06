@@ -92,7 +92,7 @@ const Register = () => {
                 {/* Logo */}
                 <div style={{ textAlign: 'center', marginBottom: 32 }}>
                     <div style={{ width: 52, height: 52, background: '#2563EB', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 26, fontWeight: 800, color: '#fff' }}>H</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>Healthora</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>Vaidya Assist</div>
                 </div>
 
                 <div className="card" style={{ padding: 32 }}>

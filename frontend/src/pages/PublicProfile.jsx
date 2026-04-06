@@ -79,7 +79,7 @@ const PublicProfile = () => {
     }}>
       <AlertCircle size={48} color="#EF4444" />
       <p style={{ color: '#9CA3AF' }}>Profile not found or not public</p>
-      <Link to="/" style={{ color: '#2563EB' }}>Go to Healthora</Link>
+      <Link to="/" style={{ color: '#2563EB' }}>Go to Vaidya Assist</Link>
     </div>
   )
 
@@ -101,7 +101,7 @@ const PublicProfile = () => {
             {profile.full_name || `@${username}`}
           </h1>
           <p style={{ color: '#6B7280', margin: 0, fontSize: '0.85rem' }}>
-            @{username} · Health Profile on Healthora
+            @{username} · Health Profile on Vaidya Assist
           </p>
         </div>
 
@@ -313,7 +313,7 @@ const PublicProfile = () => {
         }}>
           <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🏥</div>
           <p style={{ color: '#9CA3AF', fontSize: '0.85rem', marginBottom: 14, lineHeight: 1.6 }}>
-            Manage your health, analyze reports, and get AI-powered insights on Healthora
+            Manage your health, analyze reports, and get AI-powered insights on Vaidya Assist
           </p>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/register" style={{
